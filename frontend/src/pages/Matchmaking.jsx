@@ -11,7 +11,7 @@ export default function Matchmaking() {
   const navigate = useNavigate();
 
   const joinLobby = () => {
-    const name = prompt("Enter your name:");
+    const name = prompt("Your name:");
     if (name) {
       socket.emit("join_lobby", name);
       setJoined(true);
