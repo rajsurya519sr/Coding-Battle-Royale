@@ -1,3 +1,18 @@
+/* @tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 body {
   margin: 0;
   padding: 0;
@@ -6,59 +21,10 @@ body {
   color: #00f0ff;
 }
 
-.matchmaking-container {
-  text-align: center;
-  padding: 2rem;
+.font-orbitron {
   font-family: 'Orbitron', sans-serif;
-  color: #00fff7;
+}
+
+.animate-fadeIn {
   animation: fadeIn 1s ease-in-out;
-}
-
-.title {
-  font-size: 3rem;
-  text-shadow: 0 0 15px #00f0ff;
-  /* margin-bottom: 2rem; */
-}
-
-.lobby-info {
-  background: rgba(0, 255, 255, 0.05);
-  padding: 2rem;
-  border-radius: 20px;
-  box-shadow: 0 0 20px #00f0ff44;
-}
-
-h2 span {
-  background: rgba(0, 255, 255, 0.15);
-  padding: 0.5rem 1rem;
-  border-radius: 10px;
-}
-.lobby-code {
-  font-size: 1.2rem;
-  margin: 10px 0;
-}
-
-.join-btn {
-  padding: 1rem 2rem;
-  font-size: 1.2rem;
-  border: none;
-  background: #00fff7;
-  color: #000;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.join-btn:hover {
-  background: #00c2ff;
-  transform: scale(1.05);
-}
-
-.players-section {
-  margin-top: 2rem;
-}
-
-.countdown-timer {
-  margin-top: 1rem;
-  font-size: 1.5rem;
-  color: #fffa75;
-}
+} */
