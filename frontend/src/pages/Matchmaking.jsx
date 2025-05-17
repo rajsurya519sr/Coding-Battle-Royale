@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { io } from "socket.io-client";
+import socket from "../lib/socket";  // Import the shared socket instance
 
 export default function Matchmaking() {
   const navigate = useNavigate();
@@ -39,19 +39,30 @@ export default function Matchmaking() {
 
   useEffect(() => {
     // Initialize socket connection
-    socketRef.current = io("http://localhost:3000");
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log("Socket connected in Matchmaking:", socket.id);
+      const storedName = localStorage.getItem('playerName');
+      if (storedName) {
+        console.log("Reconnecting with stored name:", storedName);
+        socket.emit('join_battle', storedName);
+        setJoined(true);
+      }
+    });
 
     // Socket event listeners
-    socketRef.current.on("lobby_info", ({ lobbyCode, players }) => {
+    socket.on("lobby_info", ({ lobbyCode, players }) => {
+      console.log("Matchmaking received lobby info:", { lobbyCode, players });
       setLobbyCode(lobbyCode);
       setPlayers(players);
     });
     
-    socketRef.current.on("countdown", (time) => {
+    socket.on("countdown", (time) => {
       setCountdown(time);
     });
     
-    socketRef.current.on("redirect", (path) => {
+    socket.on("redirect", (path) => {
       setShowTransition(true);
       setTimeout(() => {
         navigate(path);
@@ -60,16 +71,19 @@ export default function Matchmaking() {
 
     // Cleanup on unmount
     return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
+      socket.off("connect");
+      socket.off("lobby_info");
+      socket.off("countdown");
+      socket.off("redirect");
     };
   }, [navigate]);
 
   const handleJoinBattle = () => {
     const name = prompt("Enter your name:");
-    if (name && socketRef.current) {
-      socketRef.current.emit("join_battle", name);
+    if (name) {
+      console.log("Joining battle with name:", name);
+      localStorage.setItem('playerName', name); // Store the name
+      socket.emit("join_battle", name);
       setJoined(true);
     }
   };

@@ -1,19 +1,22 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { io } from "socket.io-client";
 import Editor from "@monaco-editor/react";
-
-const socket = io("http://localhost:3000");
+import socket from "../lib/socket";  // Import the shared socket instance
 
 export default function Game() {
   const navigate = useNavigate();
   const [slideIndex, setSlideIndex] = useState(0);
+  const [currentLevel, setCurrentLevel] = useState(1);
   const [question, setQuestion] = useState(null);
   const [players, setPlayers] = useState([]);
+  const [playerName, setPlayerName] = useState(localStorage.getItem('playerName') || '');
   const [countdown, setCountdown] = useState(null);
   const [cursorTrail, setCursorTrail] = useState([]);
   const [showTransition, setShowTransition] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(300);
+  const [lastSubmission, setLastSubmission] = useState(null);
+  const [showSubmissionResult, setShowSubmissionResult] = useState(false);
   const containerRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const fullText = "New era of Competition..........";
@@ -25,20 +28,155 @@ export default function Game() {
   const [isAtScrollBoundary, setIsAtScrollBoundary] = useState(false);
   const [showHint, setShowHint] = useState(false);
   const [hintIndex, setHintIndex] = useState(0);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [showError, setShowError] = useState(false);
   
-  const hints = [
-    "Think about Kadane's Algorithm - a dynamic programming approach.",
-    "Keep track of the maximum sum ending at each position.",
-    "For each element, decide if it's better to start a new subarray or extend the existing one."
-  ];
+  const levelQuestions = {
+    1: {
+      title: "Color Battle: RGB Mixer",
+      description: "Create a function that mixes two RGB colors. Each color is represented as an array of 3 integers [R, G, B] where each value ranges from 0 to 255. The mixing rules are:\n- If both colors have a value > 0 for a channel, take the average\n- If one color has 0 for a channel, use the non-zero value\n- If both colors have 0 for a channel, the result is 0",
+      functionDesc: "Complete the function `mixColors` which takes the following parameters:\n- `color1`: First RGB color array [R, G, B]\n- `color2`: Second RGB color array [R, G, B]",
+      constraints: [
+        "0 ≤ R, G, B ≤ 255",
+        "All numbers must be integers",
+        "Both input arrays will always contain exactly 3 values"
+      ],
+      inputFormat: "Two lines, each containing three space-separated integers representing RGB values.",
+      outputFormat: "Three space-separated integers representing the mixed color's RGB values, where each value is rounded down to the nearest integer.",
+      sampleInput: "255 0 0\n0 255 255",
+      sampleOutput: "255 255 255",
+      explanation: "Let's mix red (255,0,0) with cyan (0,255,255):\nRed channel: one color has 0, use 255\nGreen channel: one color has 0, use 255\nBlue channel: one color has 0, use 255\nResult is white (255,255,255)",
+      hints: [
+        "Handle each color channel separately",
+        "Use integer division for averaging",
+        "Consider edge cases where values are 0"
+      ]
+    },
+    2: {
+      title: "Music Battle: Playlist Shuffler",
+      description: "Design a playlist shuffler that rearranges songs with specific rules:\n- No song can appear in its original position\n- No two songs from the same artist can be played consecutively\n- The last song cannot be from the same artist as the first song",
+      functionDesc: "Complete the function `shufflePlaylist` which takes:\n- `songs`: Array of song objects, each with {title, artist}\n- `originalOrder`: Array of indices showing current order",
+      constraints: [
+        "3 ≤ playlist length ≤ 100",
+        "Artist names are case-sensitive",
+        "All song titles are unique",
+        "Each song has a title and artist property"
+      ],
+      inputFormat: "First line: Integer n (number of songs)\nNext n lines: song_title|artist_name (separated by '|')\nLast line: Original order as space-separated indices (0-based)",
+      outputFormat: "n lines, each containing: position song_title\nwhere position is the new position (0-based) and song_title is the name of the song",
+      sampleInput: "4\nStairway to Heaven|Led Zeppelin\nBohemian Rhapsody|Queen\nHey Jude|Beatles\nWe Will Rock You|Queen",
+      sampleOutput: "2 Stairway to Heaven\n0 Hey Jude\n3 Bohemian Rhapsody\n1 We Will Rock You",
+      explanation: "The shuffle satisfies all rules:\n1. No song is in its original position (0→2, 1→0, 2→3, 3→1)\n2. Queen songs (Bohemian Rhapsody and We Will Rock You) are not consecutive\n3. First song (Hey Jude) and last song (Bohemian Rhapsody) are by different artists\n4. Original order was completely changed",
+      hints: [
+        "Consider using a graph to represent valid song transitions",
+        "Try implementing a backtracking algorithm",
+        "Keep track of artist history while building the playlist"
+      ]
+    },
+    3: {
+      title: "Network Battle: Message Router",
+      description: "You're building a network message router with redundant paths. Each connection between nodes has:\n- A reliability score (0-100%)\n- A latency in milliseconds\n- A bandwidth limit in MB/s\nFind the optimal path that maximizes reliability while keeping latency under a specified limit.",
+      functionDesc: "Complete the function `findOptimalPath` which takes:\n- `network`: Array of connections, each with {from, to, reliability, latency, bandwidth}\n- `start`: Starting node name\n- `end`: Destination node name\n- `maxLatency`: Maximum allowed total latency",
+      constraints: [
+        "2 ≤ number of nodes ≤ 20",
+        "1 ≤ connections ≤ 100",
+        "0 ≤ reliability ≤ 100",
+        "1 ≤ latency ≤ 1000",
+        "1 ≤ bandwidth ≤ 1000"
+      ],
+      inputFormat: "First line: Three space-separated integers - n (nodes), m (connections), maxLatency\nNext m lines: from to reliability latency bandwidth\nLast line: start_node end_node",
+      outputFormat: "First line: Total path reliability (rounded to 2 decimal places)\nSecond line: Total path latency\nThird line: Minimum bandwidth along path\nFourth line: Path as space-separated node names",
+      sampleInput: "4 5 100\nA B 90 20 100\nB C 85 30 200\nA C 70 50 150\nB D 95 40 100\nC D 80 20 300\nA D",
+      sampleOutput: "76.50\n90\n100\nA B D",
+      explanation: "Path Analysis:\n1. Direct path A→C→D:\n   - Reliability: 70% × 80% = 56%\n   - Latency: 50 + 20 = 70ms\n   - Bandwidth: min(150, 300) = 150MB/s\n2. Path A→B→D (chosen):\n   - Reliability: 90% × 85% = 76.50%\n   - Latency: 20 + 40 = 90ms\n   - Bandwidth: min(100, 100) = 100MB/s\n3. A→B→D is optimal because:\n   - Higher reliability than other paths\n   - Latency (90ms) under limit (100ms)\n   - Sufficient bandwidth for transmission",
+      hints: [
+        "Use modified Dijkstra's algorithm with multiple weights",
+        "Consider reliability as multiplicative along the path",
+        "Track minimum bandwidth along each path"
+      ]
+    }
+  };
+
+  const currentQuestion = levelQuestions[currentLevel];
+  const hints = currentQuestion?.hints || [];
 
   useEffect(() => {
-    socket.on("question", (data) => {
-      setQuestion(data);
+    // On component mount, check if we have player data
+    const storedName = localStorage.getItem('playerName');
+    console.log("[Game] Initial player name from storage:", storedName);
+    
+    if (storedName) {
+      setPlayerName(storedName);
+      // Re-join the battle with stored name
+      socket.emit('join_battle', { name: storedName, socketId: socket.id });
+    }
+
+    // Request initial player data
+    socket.emit('get_players');
+
+    socket.on("connect", () => {
+      console.log("[Game] Socket connected, ID:", socket.id);
+      if (storedName) {
+        console.log("[Game] Rejoining with stored name:", storedName);
+        socket.emit('join_battle', { name: storedName, socketId: socket.id });
+      }
+    });
+
+    socket.on("players", (data) => {
+      console.log("[Game] Received players update:", data);
+      if (Array.isArray(data)) {
+        const updatedPlayers = data.map(player => {
+          // If this is the current player, use stored name
+          if (player.id === socket.id) {
+            return { ...player, name: storedName || 'Unknown Player' };
+          }
+          // For other players, preserve their names
+          return { ...player, name: player.name || 'Unknown Player' };
+        });
+        console.log("[Game] Setting players with updated data:", updatedPlayers);
+        setPlayers(updatedPlayers);
+      }
     });
     
-    socket.on("players", (data) => {
-      setPlayers(data);
+    socket.on("lobby_info", ({ lobbyCode, players }) => {
+      console.log("[Game] Received lobby info:", { lobbyCode, players });
+      if (Array.isArray(players)) {
+        const updatedPlayers = players.map(player => {
+          // If this is the current player, use stored name
+          if (player.id === socket.id) {
+            return { ...player, name: storedName || 'Unknown Player' };
+          }
+          // For other players, preserve their names
+          return { ...player, name: player.name || 'Unknown Player' };
+        });
+        console.log("[Game] Setting players from lobby info:", updatedPlayers);
+        setPlayers(updatedPlayers);
+      }
+    });
+
+    socket.on("leaderboard_update", ({ players, submission }) => {
+      console.log("[Game] Received leaderboard update:", { players, submission });
+      if (Array.isArray(players)) {
+        const updatedPlayers = players.map(player => {
+          // If this is the current player, use stored name
+          if (player.id === socket.id) {
+            return { ...player, name: storedName || 'Unknown Player' };
+          }
+          // For other players, preserve their names
+          return { ...player, name: player.name || 'Unknown Player' };
+        });
+        console.log("[Game] Setting players from leaderboard update:", updatedPlayers);
+        setPlayers(updatedPlayers);
+        if (submission) {
+          setLastSubmission(submission);
+          setShowSubmissionResult(true);
+          setTimeout(() => setShowSubmissionResult(false), 3000);
+        }
+      }
+    });
+
+    socket.on("question", (data) => {
+      setQuestion(data);
     });
     
     socket.on("countdown", (time) => {
@@ -54,12 +192,37 @@ export default function Game() {
       setTimeout(() => navigate(path), 2000);
     });
 
+    socket.on("time_update", (time) => {
+      setTimeLeft(time);
+    });
+
+    socket.on("player_eliminated", ({ playerId, playerName, leaderboard }) => {
+      console.log("[Game] Player eliminated:", {
+        playerId,
+        playerName,
+        leaderboardLength: leaderboard?.length,
+        leaderboard
+      });
+      setErrorMessage(`${playerName} has been eliminated!`);
+      setShowError(true);
+      setTimeout(() => setShowError(false), 3000);
+      
+      if (Array.isArray(leaderboard)) {
+        setPlayers(leaderboard);
+      }
+    });
+
     return () => {
-      socket.off("question");
+      console.log("[Game] Cleaning up socket listeners");
+      socket.off("connect");
       socket.off("players");
+      socket.off("lobby_info");
       socket.off("countdown");
       socket.off("next_slide");
       socket.off("redirect");
+      socket.off("time_update");
+      socket.off("leaderboard_update");
+      socket.off("player_eliminated");
     };
   }, [navigate]);
 
@@ -149,7 +312,44 @@ export default function Game() {
   };
 
   const handleSubmit = () => {
-    // Add your submit logic here
+    const code = editorRef.current.getValue().trim();
+    
+    if (!code) {
+      setErrorMessage("Please write some code before submitting!");
+      setShowError(true);
+      setTimeout(() => setShowError(false), 3000); // Hide error after 3 seconds
+      return;
+    }
+
+    // Reset error state
+    setErrorMessage("");
+    setShowError(false);
+    
+    socket.emit('submit_code', {
+      code,
+      language,
+      level: currentLevel
+    });
+
+    if (currentLevel === 3) {
+      setShowTransition(true);
+      setTimeout(() => {
+        setShowTransition(false);
+        socket.emit('game_complete');
+        navigate('/completion');
+      }, 2000);
+    } else {
+      setShowTransition(true);
+      setTimeout(() => {
+        setShowTransition(false);
+        setSlideIndex(0);
+        setCurrentLevel(prev => prev + 1);
+        if (editorRef.current) {
+          editorRef.current.setValue('');
+        }
+        socket.emit('level_change', { level: currentLevel + 1 });
+      }, 2000);
+    }
   };
 
   // Add hover sound effect to buttons
@@ -161,6 +361,117 @@ export default function Game() {
   const handleButtonClick = () => {
     // playSound(SOUNDS.CLICK);
   };
+
+  const transitionOverlay = showTransition && (
+    <div className="fixed inset-0 bg-black/90 z-[1000] flex items-center justify-center">
+      <div className="text-center">
+        {currentLevel === 3 ? (
+          <>
+            <div className="text-4xl text-[#ff7700] font-bold mb-4">Congratulations!</div>
+            <div className="text-xl text-[#96fff2]">You've Completed All Levels!</div>
+            <div className="mt-6 text-lg text-[#96fff2]/80">Redirecting to completion page...</div>
+          </>
+        ) : (
+          <>
+            <div className="text-4xl text-[#ff7700] font-bold mb-4">Level {currentLevel} Complete!</div>
+            <div className="text-xl text-[#96fff2]">Advancing to Level {currentLevel + 1}...</div>
+          </>
+        )}
+        <div className="mt-4">
+          <div className="w-48 h-2 bg-gray-700 rounded-full mx-auto overflow-hidden">
+            <div className="w-full h-full bg-[#ff7700] animate-[loading_2s_ease-in-out]"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Update the error message component with cyberpunk theme
+  const errorMessageComponent = showError && (
+    <div className="fixed top-5 right-5 z-[1000] animate-fade-in">
+      <div className="cyber-border bg-black/80 backdrop-blur-sm px-6 py-4 rounded-md shadow-[0_0_15px_rgba(255,119,0,0.5)] flex items-center space-x-3">
+        <div className="text-[#ff7700] animate-pulse">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <div>
+          <div className="font-mono text-[#96fff2] font-semibold tracking-wider">ERROR_DETECTED</div>
+          <div className="text-red-500 text-sm mt-1">{errorMessage}</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Add submission result component
+  const submissionResultComponent = showSubmissionResult && lastSubmission && (
+    <div className="fixed top-20 right-5 z-[1000] animate-fade-in">
+      <div className="cyber-border bg-black/80 backdrop-blur-sm px-6 py-4 rounded-md shadow-[0_0_15px_rgba(255,119,0,0.5)]">
+        <div className="text-[#ff7700] font-semibold mb-2">Submission Result</div>
+        <div className="text-[#96fff2] text-sm">
+          <div>Base Points: {lastSubmission.basePoints}</div>
+          <div>Time Bonus: {lastSubmission.timeBonus}</div>
+          <div className="text-lg font-bold mt-1">
+            Total: {lastSubmission.points} points
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Update the leaderboard rendering
+  const renderLeaderboard = () => (
+    <div className="w-[30%] h-[78vh] cyber-border bg-black/40 p-6 rounded-lg backdrop-blur-sm">
+      <div className="text-[1.5vw] font-bold text-[#ff7700] mb-4 flex items-center justify-between">
+        <span>Leaderboard</span>
+        <span className="text-[1vw] text-[#96fff2]">Points</span>
+      </div>
+      <ul className="space-y-4 max-h-[calc(78vh-4rem)] overflow-y-auto custom-scrollbar pr-2">
+        {players && players.length > 0 ? (
+          [...players]
+            .sort((a, b) => (b.points || 0) - (a.points || 0))
+            .map((player, idx) => (
+              <li 
+                key={player.id}
+                className={`bg-black/60 p-4 rounded-md border-2 flex items-center
+                  ${idx === 0 ? 'border-[#ff7700] shadow-[0_0_15px_rgba(255,119,0,0.3)]' : 'border-[#96fff2]'}
+                  ${player.id === socket.id ? 'bg-[#ff7700]/10' : ''}
+                  ${player.eliminated ? 'opacity-50' : ''}`}
+              >
+                <div className="flex-1 flex items-center space-x-4">
+                  <span className={`text-2xl font-bold ${idx === 0 ? 'text-[#ff7700]' : 'text-[#96fff2]/50'}`}>
+                    #{idx + 1}
+                  </span>
+                  <div className="flex flex-col">
+                    <div className="flex items-center space-x-2">
+                      <span className={`text-lg ${player.id === socket.id ? 'text-[#ff7700]' : 'text-[#96fff2]'}`}>
+                        {player.name || 'Unknown Player'}
+                      </span>
+                      {player.eliminated && (
+                        <span className="text-xs text-red-500 px-2 py-1 rounded-full border border-red-500">
+                          Eliminated
+                        </span>
+                      )}
+                    </div>
+                    {player.id === socket.id && (
+                      <span className="text-xs text-[#96fff2]/50">You</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className={`font-mono text-xl ${idx === 0 ? 'text-[#ff7700]' : 'text-[#96fff2]'}`}>
+                    {player.points || 0}
+                  </span>
+                  <span className={`text-sm ${idx === 0 ? 'text-[#ff7700]/70' : 'text-[#96fff2]/70'}`}>pts</span>
+                </div>
+              </li>
+            ))
+        ) : (
+          <li className="text-center text-[#96fff2] py-4">No players yet</li>
+        )}
+      </ul>
+    </div>
+  );
 
   return (
     <>
@@ -174,7 +485,7 @@ export default function Game() {
           position: relative;
           border: 2px solid transparent;
           background: linear-gradient(#000, #000) padding-box,
-                    linear-gradient(135deg, #96fff2, transparent, #ff7700) border-box;
+                    linear-gradient(135deg, #ff7700, #96fff2) border-box;
         }
 
         .matrix-symbol {
@@ -298,11 +609,36 @@ export default function Game() {
             transform: scale(1);
           }
         }
+
+        @keyframes loading {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(0); }
+        }
+
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+            transform: translateX(50px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+
+        .animate-fade-in {
+          animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
       `}</style>
 
       <div ref={containerRef} 
       className="h-screen w-screen bg-gradient-to-r from-[#1d0d00] via-black to-[#1d0d00] text-white font-['Orbitron'] overflow-hidden relative">
         
+        {/* Add Timer Display */}
+        <div className="fixed top-5 right-5 text-[1.5vw] font-bold text-[#96fff2]">
+          Time Left: {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+        </div>
+
         {/* Navigation Buttons - Fixed Top Right */}
         <div className="fixed top-8 right-8 flex flex-col space-y-4 z-50">
           {/* Problem Statement Button - Only visible on Editor slide */}
@@ -387,9 +723,12 @@ export default function Game() {
           </motion.span>
         ))}
 
-        <div className="fixed top-5 left-1/2 transform -translate-x-1/2 text-[2vw] font-bold text-[#ff7700]">
-          Level {slideIndex + 1}
-        </div>
+        {/* Only show level indicator if level is 3 or less */}
+        {currentLevel <= 3 && (
+          <div className="fixed top-5 left-1/2 transform -translate-x-1/2 text-[2vw] font-bold text-[#ff7700]">
+            Level {currentLevel}
+          </div>
+        )}
 
         {countdown !== null && (
           <div className="absolute bottom-5 left-1/2 transform -translate-x-1/2 text-[2vw] text-yellow-400 animate-pulse">
@@ -407,7 +746,7 @@ export default function Game() {
             <div className="cyber-border bg-black/40 rounded-lg w-[80%] h-[80vh] flex flex-col backdrop-blur-sm relative">
               {/* Fixed Title */}
               <div className="p-6 border-b border-[#96fff2]/20">
-                <div className="text-[1.8vw] font-bold text-[#96fff2]">Array Battle: Maximum Subarray Sum</div>
+                <div className="text-[1.8vw] font-bold text-[#96fff2]">{currentQuestion.title}</div>
               </div>
               
               {/* Scrollable Content */}
@@ -416,68 +755,58 @@ export default function Game() {
                   {/* Problem Description */}
                   <div>
                     <h3 className="text-[#ff7700] text-xl font-semibold mb-2">Problem</h3>
-                    <p className="text-gray-200">
-                      Given an array of integers, find the contiguous subarray (containing at least one number) 
-                      which has the largest sum and return its sum. Your solution must have a time complexity of O(n).
-                    </p>
+                    <p className="text-gray-200">{currentQuestion.description}</p>
                   </div>
 
                   {/* Function Description */}
                   <div>
                     <h3 className="text-[#ff7700] text-xl font-semibold mb-2">Function Description</h3>
-                    <p className="text-gray-200">
-                      Complete the function <code className="bg-black/60 px-2 py-1 rounded">maxSubArray</code> which takes the following parameter:
-                    </p>
-                    <ul className="list-disc list-inside mt-2 text-gray-200">
-                      <li><code className="bg-black/60 px-2 py-1 rounded">nums</code>: An array of integers</li>
-                    </ul>
+                    <p className="text-gray-200 whitespace-pre-line">{currentQuestion.functionDesc}</p>
                   </div>
 
                   {/* Constraints */}
                   <div>
                     <h3 className="text-[#ff7700] text-xl font-semibold mb-2">Constraints</h3>
                     <ul className="list-disc list-inside text-gray-200">
-                      <li>1 ≤ nums.length ≤ 10⁵</li>
-                      <li>-10⁴ ≤ nums[i] ≤ 10⁴</li>
+                      {currentQuestion.constraints.map((constraint, index) => (
+                        <li key={index}>{constraint}</li>
+                      ))}
                     </ul>
                   </div>
 
                   {/* Input Format */}
                   <div>
                     <h3 className="text-[#ff7700] text-xl font-semibold mb-2">Input Format</h3>
-                    <p className="text-gray-200">
-                      The first line contains an integer n, the size of the array.<br/>
-                      The second line contains n space-separated integers nums[i].
-                    </p>
+                    <p className="text-gray-200 whitespace-pre-line">{currentQuestion.inputFormat}</p>
                   </div>
 
                   {/* Output Format */}
                   <div>
                     <h3 className="text-[#ff7700] text-xl font-semibold mb-2">Output Format</h3>
-                    <p className="text-gray-200">
-                      Return a single integer denoting the maximum sum of a contiguous subarray.
-                    </p>
+                    <p className="text-gray-200 whitespace-pre-line">{currentQuestion.outputFormat}</p>
                   </div>
 
                   {/* Sample Input */}
                   <div>
                     <h3 className="text-[#ff7700] text-xl font-semibold mb-2">Sample Input</h3>
-                    <pre className="bg-black/60 p-4 rounded-md text-gray-200 font-mono">
-9
--2 1 -3 4 -1 2 1 -5 4</pre>
+                    <pre className="bg-black/60 p-4 rounded-md text-gray-200 font-mono whitespace-pre-wrap">
+                      {currentQuestion.sampleInput}
+                    </pre>
                   </div>
 
                   {/* Sample Output */}
                   <div>
                     <h3 className="text-[#ff7700] text-xl font-semibold mb-2">Sample Output</h3>
-                    <pre className="bg-black/60 p-4 rounded-md text-gray-200 font-mono">6</pre>
+                    <pre className="bg-black/60 p-4 rounded-md text-gray-200 font-mono whitespace-pre-wrap">
+                      {currentQuestion.sampleOutput}
+                    </pre>
                   </div>
 
                   {/* Explanation */}
                   <div>
                     <h3 className="text-[#ff7700] text-xl font-semibold mb-2">Explanation</h3>
-                    <p className="text-gray-200">
-                      The contiguous subarray [4,-1,2,1] has the largest sum = 6.
+                    <p className="text-gray-200 whitespace-pre-wrap">
+                      {currentQuestion.explanation}
                     </p>
                   </div>
                 </div>
@@ -499,7 +828,7 @@ export default function Game() {
           <div className="min-w-full mt-[10vh] flex flex-row justify-between items-start p-8 gap-8">
             <div className="w-[65%] bg-transparent rounded-lg">
               <div className="mb-6 flex justify-between items-center">
-                <h3 className="text-[2.5vw] font-bold text-[#ff7700] mb-3">Choose Your Weapon</h3>
+                <h3 className="text-[2.5vw] font-bold text-[#96fff2] mb-3 font-mono">Choose Your Weapon</h3>
                 <select 
                   className="w-[20%] cyber-border bg-black/40 p-3 rounded-md text-[#96fff2] focus:outline-none"
                   value={language}
@@ -585,28 +914,18 @@ export default function Game() {
                 <button 
                   onClick={handleSubmit}
                   onMouseEnter={handleButtonHover}
-                  className="px-6 py-3 bg-black/40 text-[#ff7700] border-2 border-[#ff7700] rounded-md hover:bg-[#ff7700]/10 transition-all duration-300"
+                  className="px-6 py-3 bg-black/40 text-[#ff7700] border-2 border-[#ff7700] rounded-md hover:bg-[#ff7700]/10 transition-all duration-300 flex items-center space-x-2"
                 >
-                  Submit
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  <span>Submit</span>
                 </button>
               </div>
             </div>
 
             {/* Leaderboard */}
-            <div className="w-[30%] h-[78vh] cyber-border bg-black/40 p-6 rounded-lg backdrop-blur-sm">
-              <div className="text-[1.5vw] font-bold text-[#ff7700] mb-4">Leaderboard</div>
-              <ul className="space-y-4">
-                {players.map((player, idx) => (
-                  <li 
-                    key={idx} 
-                    className="bg-black/60 text-[#96fff2] p-4 rounded-md border-[#96fff2] border-2 flex justify-between items-center"
-                  >
-                    <span className="text-lg">{player.name}</span>
-                    <span className="text-[#ff7700] font-bold">{player.points || 0} pts</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            {renderLeaderboard()}
           </div>
         </div>
 
@@ -671,6 +990,9 @@ export default function Game() {
             </div>
           </div>
         )}
+        {transitionOverlay}
+        {errorMessageComponent}
+        {submissionResultComponent}
       </div>
     </>
   );
