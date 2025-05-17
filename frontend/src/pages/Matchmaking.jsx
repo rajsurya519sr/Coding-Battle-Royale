@@ -12,6 +12,8 @@ export default function Matchmaking() {
   // const [isCreator, setIsCreator] = useState(false);
   const [cursorTrail, setCursorTrail] = useState([]);
   const [showTransition, setShowTransition] = useState(false);
+  const [showNameInput, setShowNameInput] = useState(false);
+  const [playerName, setPlayerName] = useState("");
   const socketRef = useRef(null);
   const [displayText, setDisplayText] = useState("");
   const fullText = "New era of Competition..........";
@@ -79,12 +81,17 @@ export default function Matchmaking() {
   }, [navigate]);
 
   const handleJoinBattle = () => {
-    const name = prompt("Enter your name:");
-    if (name) {
-      console.log("Joining battle with name:", name);
-      localStorage.setItem('playerName', name); // Store the name
-      socket.emit("join_battle", name);
+    setShowNameInput(true);
+  };
+
+  const handleNameSubmit = (e) => {
+    e.preventDefault();
+    if (playerName.trim()) {
+      console.log("Joining battle with name:", playerName);
+      localStorage.setItem('playerName', playerName);
+      socket.emit("join_battle", playerName);
       setJoined(true);
+      setShowNameInput(false);
     }
   };
 
@@ -239,6 +246,36 @@ export default function Matchmaking() {
   .signup-login-container {
     animation: rgbGlow 3s infinite alternate ease-in-out;
   }
+
+  .name-input-overlay {
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(8px);
+  }
+  
+  .name-input {
+    background: rgba(255, 119, 0, 0.1);
+    border: 2px solid #ff7700;
+    color: #96fff2;
+    transition: all 0.3s ease;
+  }
+  
+  .name-input:focus {
+    border-color: #96fff2;
+    box-shadow: 0 0 15px rgba(150, 255, 242, 0.5);
+    outline: none;
+  }
+  
+  .submit-button {
+    background: rgba(255, 119, 0, 0.2);
+    border: 2px solid #ff7700;
+    color: #96fff2;
+    transition: all 0.3s ease;
+  }
+  
+  .submit-button:hover {
+    background: rgba(255, 119, 0, 0.4);
+    box-shadow: 0 0 20px rgba(255, 119, 0, 0.5);
+  }
       `}</style>
 
       <div className="h-screen w-screen bg-gradient-to-r from-[#1d0d00] via-[black] to-[#1d0d00] text-white relative flex items-center justify-center font-['Orbitron'] overflow-hidden">
@@ -291,6 +328,42 @@ export default function Matchmaking() {
               />
             </div>
           </div>
+        )}
+
+        {showNameInput && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="fixed inset-0 name-input-overlay z-50 flex items-center justify-center"
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-black/80 p-8 rounded-lg border-2 border-[#ff7700] w-96"
+            >
+              <h2 className="text-2xl font-bold text-center mb-6 text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] to-[#96fff2]">
+                Enter Your Battle Name
+              </h2>
+              <form onSubmit={handleNameSubmit} className="space-y-6">
+                <input
+                  type="text"
+                  value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value)}
+                  className="name-input w-full px-4 py-3 rounded-lg text-lg font-mono"
+                  placeholder="Type your name..."
+                  autoFocus
+                  maxLength={20}
+                />
+                <button
+                  type="submit"
+                  className="submit-button w-full py-3 rounded-lg text-lg font-bold uppercase tracking-wider"
+                  disabled={!playerName.trim()}
+                >
+                  Enter Arena
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
         )}
 
         {!showTransition && (
