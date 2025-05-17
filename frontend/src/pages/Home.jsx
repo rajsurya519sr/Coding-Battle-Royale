@@ -10,9 +10,8 @@ export default function ExtendedPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [cursorTrail, setCursorTrail] = useState([]);
   const [showIntro, setShowIntro] = useState(true);
-  const [showContent, setShowContent] = useState(true);
+  const [showContent, setShowContent] = useState(false);
   const [showLoader, setShowLoader] = useState(true);
-  // const [isVisible, setIsVisible] = useState(false);
   const [signup, setSignupVisible] = useState(false);
   const [login, setLoginVisible] = useState(false);
   const containerRef = useRef(null);
@@ -40,7 +39,7 @@ export default function ExtendedPage() {
     setTimeout(() => {
       setShowIntro(false);
       setShowLoader(false);
-      setShowContent(true); // Reveal full content after intro
+      setShowContent(true);
     }, 3000);
   }, []);
 
@@ -74,7 +73,17 @@ export default function ExtendedPage() {
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, []);
 
+  const handleLoginClick = () => {
+    setLoginVisible(true);
+  };
 
+  const handleSignupClick = () => {
+    setSignupVisible(true);
+  };
+
+  const handleNavigateToMatchmaking = () => {
+    navigate('/matchmaking');
+  };
 
   return (
     <>
@@ -335,8 +344,8 @@ export default function ExtendedPage() {
             className="cursor-trail"
             style={{ left: particle.x, top: particle.y }}
             initial={{ opacity: 1, scale: 1 }}
-            animate={{ opacity: 0, scale: 1.5 }}
-            transition={{ duration: 1 }}
+            animate={{ opacity: 1, scale: 1.5 }}
+            transition={{ duration: 2 }}
           />
         ))}
 
@@ -360,12 +369,12 @@ export default function ExtendedPage() {
            {/* Go Back Button */}
            <div className="fixed top-4 right-6 flex space-x-8">
           <button 
-          onClick={() => setLoginVisible(true)}
+          onClick={() => handleLoginClick()}
           className="px-6 py-3 bg-black/50 neon-border-1 rounded-lg transition-all duration-200 cursor-pointer hover:scale-105 text-sm uppercase tracking-wider">
             Login
           </button>
           <button 
-          onClick={() => setSignupVisible(true)}
+          onClick={() => handleSignupClick()}
           className="px-6 py-3 bg-black/50 neon-border-1 rounded-lg transition-all duration-200 cursor-pointer hover:scale-105 text-sm uppercase tracking-wider">
             Register
           </button>
@@ -451,10 +460,15 @@ export default function ExtendedPage() {
             className="absolute w-full max-w-md top-[63.5%] left-[13%] px-4 py-3 text-lg text-white bg-black border-2 border-[#96fff2] rounded-lg outline-none focus:ring-2 focus:ring-[#96fff2] focus:border-[#96fff2] placeholder-gray-400 transition-all  focus:shadow-[0_0_20px_rgba(0,255,255,1)]"
           />
 
+          {/* Register section Enter the Battlefield button */}
           <motion.button
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 1 }}
+          onClick={() => {
+            handleNavigateToMatchmaking();
+            setSignupVisible(false);
+          }}
           className="absolute px-8 py-4 top-[79%] left-[22.5%] bg-black/50 text-[#ff7700] neon-border-sl rounded-lg transition-all duration-200 cursor-pointer hover:scale-105 text-lg uppercase tracking-wider">
             Enter the Battlefield
           </motion.button>
@@ -464,7 +478,7 @@ export default function ExtendedPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5, duration: 1 }}
             onClick={() => {
-              setLoginVisible(true);
+              handleLoginClick();
               setSignupVisible(false);
             }}
             className="absolute top-[89%] left-[21%] text-[1.4vw] text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] to-[#ff7700] mt-4"
@@ -476,7 +490,9 @@ export default function ExtendedPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 1 }}
-          onClick={() => setSignupVisible(false)}
+          onClick={() => {
+            setSignupVisible(false);
+          }}
           className="absolute close px-3 py-2 top-1 right-1  bg-black/50 text-[#ff7700] neon-border-cross rounded-lg transition-all duration-200 cursor-pointer hover:scale-105 text-xl uppercase tracking-wider">
           ⛌
           </motion.button>
@@ -548,10 +564,15 @@ export default function ExtendedPage() {
             className="absolute w-full max-w-md top-[55.5%] left-[13%] px-4 py-3 text-lg text-white bg-black border-2 border-[#96fff2] rounded-lg outline-none focus:ring-2 focus:ring-[#96fff2] cyan-300 focus:border-[#96fff2] placeholder-gray-400 transition-all  focus:shadow-[0_0_20px_rgba(0,255,255,1)]"
           />
 
+          {/* Login section Enter the Battlefield button */}
           <motion.button
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 1 }}
+          onClick={() => {
+            handleNavigateToMatchmaking();
+            setLoginVisible(false);
+          }}
           className="absolute px-8 py-4 top-[73%] left-[22.5%] bg-black/50 text-[#ff7700] neon-border-sl rounded-lg transition-all duration-200 cursor-pointer hover:scale-105 text-lg uppercase tracking-wider">
             Enter the Battlefield
           </motion.button>
@@ -561,7 +582,7 @@ export default function ExtendedPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5, duration: 1 }}
             onClick={() => {
-              setSignupVisible(true);
+              handleSignupClick();
               setLoginVisible(false);
               }}
             className="absolute top-[86%] left-[20.5%] text-[1.4vw] text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] to-[#ff7700] mt-4"
@@ -573,7 +594,9 @@ export default function ExtendedPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 1 }}
-          onClick={() => setLoginVisible(false)}
+          onClick={() => {
+            setLoginVisible(false);
+          }}
           className="absolute close px-3 py-2 top-1 right-1  bg-black/50 text-[#ff7700] neon-border-cross rounded-lg transition-all duration-200 cursor-pointer hover:scale-105 text-xl uppercase tracking-wider">
           ⛌
           </motion.button>
@@ -638,7 +661,7 @@ export default function ExtendedPage() {
 
           <div className="absolute top-[45%] left-[96%] flex space-x-12">
           <button
-          onClick={() => setLoginVisible(true)}
+          onClick={() => handleLoginClick()}
           className="w-32 h-32 bg-black/50 neon-border-2 text-white text-lg font-bold uppercase tracking-widest transition-all duration-200 cursor-pointer rounded-full flex items-center justify-center hover:scale-105">
             Join The Battle
           </button>
@@ -711,7 +734,7 @@ export default function ExtendedPage() {
         
           <div className="absolute top-[45%] left-[211%] flex space-x-12">
           <button
-          onClick={() => setLoginVisible(true)}
+          onClick={() => handleLoginClick()}
           className="w-32 h-32 bg-black/50 neon-border-2 text-white text-lg font-bold uppercase tracking-widest transition-all duration-200 cursor-pointer rounded-full flex items-center justify-center hover:scale-105">
             Join The Battle
           </button>
@@ -786,7 +809,7 @@ export default function ExtendedPage() {
         
           <div className="absolute top-[45%] left-[326%] flex space-x-12">
           <button
-          onClick={() => setLoginVisible(true)}
+          onClick={() => handleLoginClick()}
           className="w-32 h-32 bg-black/50 neon-border-2 text-white text-lg font-bold uppercase tracking-widest transition-all duration-200 cursor-pointer rounded-full flex items-center justify-center hover:scale-105">
             Join The Battle
           </button>
@@ -853,7 +876,7 @@ export default function ExtendedPage() {
 
           <div className="absolute top-[45%] left-[441%] flex space-x-12">
           <button
-          onClick={() => setLoginVisible(true)}
+          onClick={() => handleLoginClick()}
           className="w-32 h-32 bg-black/50 neon-border-2 text-white text-lg font-bold uppercase tracking-widest transition-all duration-200 cursor-pointer rounded-full flex items-center justify-center hover:scale-105">
             Join The Battle
           </button>
@@ -884,7 +907,7 @@ export default function ExtendedPage() {
             transition={{ delay: 0.5, duration: 1 }}
             className="absolute top-[39%] left-[478.5%] text-[1.8vw]  h-screen w-screen flex text-transparent bg-clip-text bg-gradient-to-r from-[#96fff2] to-[#96fff2] mt-4"
           >
-            This is not just about coding—it’s about strategy, speed, and survival
+            This is not just about coding—it's about strategy, speed, and survival
           </motion.p>
 
           <motion.p
@@ -906,7 +929,7 @@ export default function ExtendedPage() {
             transition={{ delay: 0.5, duration: 1 }}
             className="absolute top-[80%] left-[475%] text-[1.8vw] h-screen w-screen flex text-transparent bg-clip-text bg-gradient-to-r from-[#96fff2] to-[#96fff2] mt-4"
           >
-            It’s not just about knowing the answer, it’s about being the fastest to get there
+            It's not just about knowing the answer, it's about being the fastest to get there
           </motion.p>
 
            <div className="absolute top-[25%] left-[525%] w-full">
@@ -920,7 +943,7 @@ export default function ExtendedPage() {
 
           <div className="absolute top-[45%] left-[556%] flex space-x-12">
           <button
-          onClick={() => setLoginVisible(true)}
+          onClick={() => handleLoginClick()}
           className="w-32 h-32 bg-black/50 neon-border-2 text-white text-lg font-bold uppercase tracking-widest transition-all duration-200 cursor-pointer rounded-full flex items-center justify-center hover:scale-105">
             Join The Battle
           </button>
@@ -974,7 +997,7 @@ export default function ExtendedPage() {
 
           <div className="absolute top-[44%] left-[645%] flex space-x-12">
           <button
-          onClick={() => setLoginVisible(true)}
+          onClick={() => handleLoginClick()}
           className="w-40 h-40 bg-black/50 neon-border-5 text-[#ff7700] text-xl font-bold uppercase tracking-widest transition-all duration-200 cursor-pointer rounded-full flex items-center justify-center hover:scale-105">
             Join The Battle
           </button>
