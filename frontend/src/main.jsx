@@ -6,7 +6,7 @@ import Home from './pages/Home';
 // import Lobby from './pages/Lobby';
 import Game from './pages/Game';
 import Matchmaking from './pages/Matchmaking';
-import './styles/globals.css';
+import './styles/index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <BrowserRouter>

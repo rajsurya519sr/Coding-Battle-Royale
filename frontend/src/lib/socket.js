@@ -8,33 +8,16 @@ const socket = io("http://localhost:3000", {
   reconnectionDelay: 1000
 });
 
-// Add detailed logging for all socket events
-socket.onAny((event, ...args) => {
-  console.log(`[Socket Event] ${event}:`, ...args);
+socket.on("connect", () => {
+  console.log("Socket connected:", socket.id);
 });
 
-socket.on("connect", () => {
-  console.log("[Socket] Connected with ID:", socket.id);
+socket.on("disconnect", () => {
+  console.log("Socket disconnected");
 });
 
 socket.on("connect_error", (error) => {
-  console.error("[Socket] Connection error:", error);
-});
-
-socket.on("disconnect", (reason) => {
-  console.log("[Socket] Disconnected:", reason);
-});
-
-socket.on("reconnect", (attemptNumber) => {
-  console.log("[Socket] Reconnected after", attemptNumber, "attempts");
-});
-
-socket.on("reconnect_attempt", (attemptNumber) => {
-  console.log("[Socket] Reconnection attempt #", attemptNumber);
-});
-
-socket.on("error", (error) => {
-  console.error("[Socket] Error:", error);
+  console.error("Socket connection error:", error);
 });
 
 export default socket;

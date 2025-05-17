@@ -22,13 +22,10 @@ const io = new Server(server, {
   }
 });
 
-// Separate maps for different types of data
-const lobbies = new Map(); // lobbyCode -> { players: [], countdownStarted: false, timeLeft: 300 }
-const playerLobbyMap = new Map(); // socketId -> lobbyCode
-const playerNames = new Map(); // socketId -> name
-const playerScores = new Map(); // socketId -> points
-const eliminatedPlayers = new Map(); // socketId -> { name, points, eliminatedAt }
-
+const lobbies = {}; // { lobbyCode: { players: [], countdownStarted: false } }
+const playerLobbyMap = new Map(); // Keep track of which lobby each player is in
+const playerDataMap = new Map(); // Keep track of player data (name, points, etc.)
+const eliminatedPlayers = new Map(); // Keep track of eliminated players and their scores
 const maxPlayers = 8;
 const minPlayersToStart = 4;
 
@@ -39,69 +36,53 @@ const POINTS_PER_LEVEL = {
   3: 300   // Level 3: Network Message Router
 };
 
-// Time bonus calculation (faster submissions get more points)
-const calculateTimeBonus = (timeLeft) => {
-  return Math.floor(timeLeft * 10); // 10 points per second remaining
-};
-
 const generateLobbyCode = () => nanoid(6).toUpperCase();
-
-// Helper function to get player data
-const getPlayerData = (socketId) => ({
-  id: socketId,
-  name: playerNames.get(socketId) || 'Unknown Player',
-  points: playerScores.get(socketId) || 0,
-  eliminated: eliminatedPlayers.has(socketId)
-});
-
-// Helper function to get all players in a lobby
-const getLobbyPlayers = (lobbyCode) => {
-  const lobby = lobbies.get(lobbyCode);
-  if (!lobby) return [];
-  
-  return lobby.players.map(playerId => getPlayerData(playerId));
-};
 
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
+  let playerLobby = null;
 
   socket.on("get_players", () => {
     console.log("Get players request from:", socket.id);
     const lobbyCode = playerLobbyMap.get(socket.id);
-    
-    if (lobbyCode && lobbies.has(lobbyCode)) {
-      const players = getLobbyPlayers(lobbyCode);
-      console.log("Sending players data:", players);
-      socket.emit("players", players);
+    if (lobbyCode && lobbies[lobbyCode]) {
+      // Get all players in the lobby, including eliminated ones
+      const activePlayers = lobbies[lobbyCode].players;
+      const eliminatedLobbyPlayers = Array.from(eliminatedPlayers.values())
+        .filter(p => playerLobbyMap.get(p.id) === lobbyCode);
+      
+      const allPlayers = [...activePlayers, ...eliminatedLobbyPlayers]
+        .map(player => ({
+          ...player,
+          name: playerDataMap.get(player.id)?.name || player.name || 'Unknown Player'
+        }));
+
+      console.log("Sending complete player data:", allPlayers);
+      socket.emit("players", allPlayers);
     } else {
       console.log("No lobby found for socket:", socket.id);
       socket.emit("players", []);
     }
   });
 
-  socket.on("join_battle", (data) => {
-    const { name, socketId } = typeof data === 'object' ? data : { name: data, socketId: socket.id };
+  socket.on("join_battle", (name) => {
     console.log("Player joining battle:", { name, socketId: socket.id });
     
     // Store player data
-    const playerData = {
-      id: socket.id,
-      name: name,
-      points: 0,
-      eliminated: false
-    };
+    playerDataMap.set(socket.id, { name, points: 0 });
     
     // Check if player is already in a lobby
     const existingLobbyCode = playerLobbyMap.get(socket.id);
-    if (existingLobbyCode && lobbies.has(existingLobbyCode)) {
-      const lobby = lobbies.get(existingLobbyCode);
+    if (existingLobbyCode && lobbies[existingLobbyCode]) {
+      const lobby = lobbies[existingLobbyCode];
       const playerIndex = lobby.players.findIndex(p => p.id === socket.id);
       
       if (playerIndex !== -1) {
         // Update existing player's data
         lobby.players[playerIndex] = {
           ...lobby.players[playerIndex],
-          name: name // Preserve the name
+          name,
+          points: playerDataMap.get(socket.id)?.points || 0
         };
         
         console.log("Updated existing player:", lobby.players[playerIndex]);
@@ -115,38 +96,42 @@ io.on("connection", (socket) => {
 
     // Find or create a new lobby
     let lobbyCode = Object.keys(lobbies).find(
-      (code) => lobbies.get(code).players.length < maxPlayers
+      (code) => lobbies[code].players.length < maxPlayers
     );
 
     if (!lobbyCode) {
       lobbyCode = generateLobbyCode();
-      lobbies.set(lobbyCode, { 
+      lobbies[lobbyCode] = { 
         players: [], 
-        countdownStarted: false,
-        timeLeft: 300
-      });
+        countdownStarted: false
+      };
       console.log("Created new lobby:", lobbyCode);
     }
 
-    // Add player to lobby
-    lobbies.get(lobbyCode).players.push(playerData);
+    const playerData = {
+      id: socket.id,
+      name,
+      points: playerDataMap.get(socket.id)?.points || 0
+    };
+    
+    lobbies[lobbyCode].players.push(playerData);
     socket.join(lobbyCode);
+    playerLobby = lobbyCode;
     playerLobbyMap.set(socket.id, lobbyCode);
 
-    console.log("Updated lobby players:", lobbies.get(lobbyCode).players);
+    console.log("Updated lobby players:", lobbies[lobbyCode].players);
 
-    // Send updated player list to all clients
     io.to(lobbyCode).emit("lobby_info", {
       lobbyCode,
-      players: lobbies.get(lobbyCode).players
+      players: lobbies[lobbyCode].players
     });
 
-    // Start countdown if enough players
+    // Start game if enough players
     if (
-      lobbies.get(lobbyCode).players.length >= minPlayersToStart &&
-      !lobbies.get(lobbyCode).countdownStarted
+      lobbies[lobbyCode].players.length >= minPlayersToStart &&
+      !lobbies[lobbyCode].countdownStarted
     ) {
-      lobbies.get(lobbyCode).countdownStarted = true;
+      lobbies[lobbyCode].countdownStarted = true;
       let timeLeft = 15;
       const interval = setInterval(() => {
         io.to(lobbyCode).emit("countdown", timeLeft);
@@ -154,115 +139,73 @@ io.on("connection", (socket) => {
         if (timeLeft < 0) {
           clearInterval(interval);
           io.to(lobbyCode).emit("redirect", "/game");
-          startLevelTimer(lobbyCode);
         }
       }, 1000);
     }
   });
 
+  // Handle code submissions
   socket.on("submit_code", ({ code, language, level }) => {
-    const lobbyCode = playerLobbyMap.get(socket.id);
-    if (!lobbyCode || !lobbies.has(lobbyCode)) return;
-    
-    const lobby = lobbies.get(lobbyCode);
-    if (!lobby.players.includes(socket.id)) return;
-    
-    // Calculate points
-    const basePoints = POINTS_PER_LEVEL[level] || 0;
-    const timeBonus = calculateTimeBonus(lobby.timeLeft);
-    const totalPoints = basePoints + timeBonus;
-    
-    // Update player's points
-    playerScores.set(socket.id, (playerScores.get(socket.id) || 0) + totalPoints);
-    
-    // Send updated leaderboard
-    const players = getLobbyPlayers(lobbyCode);
-    io.to(lobbyCode).emit("leaderboard_update", {
-      players,
+    if (!playerLobby || !lobbies[playerLobby]) return;
+
+    const lobby = lobbies[playerLobby];
+    const player = lobby.players.find(p => p.id === socket.id);
+    if (!player) return;
+
+    // Calculate points - now just base points without time bonus
+    const points = POINTS_PER_LEVEL[level] || 0;
+
+    // Update player's points in all relevant places
+    player.points += points;
+    const playerData = playerDataMap.get(socket.id);
+    if (playerData) {
+      playerData.points = (playerData.points || 0) + points;
+    }
+
+    // Sort and update the leaderboard
+    const allPlayers = [
+      ...lobby.players,
+      ...Array.from(eliminatedPlayers.values())
+        .filter(p => playerLobbyMap.get(p.id) === playerLobby)
+    ].sort((a, b) => b.points - a.points);
+
+    io.to(playerLobby).emit("leaderboard_update", {
+      players: allPlayers,
       submission: {
         playerId: socket.id,
-        points: totalPoints,
-        basePoints,
-        timeBonus
+        points: points,
+        basePoints: points,
+        timeBonus: 0
       }
     });
   });
 
+  // Handle level changes
+  socket.on("level_change", ({ level }) => {
+    if (playerLobby && lobbies[playerLobby]) {
+      // Just emit the level change without timer reset
+      io.to(playerLobby).emit("level_changed", { level });
+    }
+  });
+
+  // Cleanup on disconnect
   socket.on("disconnect", () => {
     const lobbyCode = playerLobbyMap.get(socket.id);
-    if (lobbyCode && lobbies.has(lobbyCode)) {
-      const lobby = lobbies.get(lobbyCode);
-      lobby.players = lobby.players.filter(id => id !== socket.id);
+    if (lobbyCode && lobbies[lobbyCode]) {
+      console.log("Player disconnected:", socket.id);
+      lobbies[lobbyCode].players = lobbies[lobbyCode].players.filter(
+        (p) => p.id !== socket.id
+      );
+      playerLobbyMap.delete(socket.id);
       
-      if (lobby.players.length === 0) {
-        lobbies.delete(lobbyCode);
-      } else {
-        const players = getLobbyPlayers(lobbyCode);
-        io.to(lobbyCode).emit("lobby_info", { lobbyCode, players });
-      }
+      io.to(lobbyCode).emit("lobby_info", {
+        lobbyCode,
+        players: lobbies[lobbyCode].players
+      });
     }
-    
-    playerLobbyMap.delete(socket.id);
-    playerNames.delete(socket.id);
-    playerScores.delete(socket.id);
-    eliminatedPlayers.delete(socket.id);
-    
     console.log(`User disconnected: ${socket.id}`);
   });
 });
-
-// Function to start the level timer
-function startLevelTimer(lobbyCode) {
-  const lobby = lobbies.get(lobbyCode);
-  if (!lobby) return;
-
-  const timer = setInterval(() => {
-    lobby.timeLeft--;
-    
-    // Emit time update to all players
-    io.to(lobbyCode).emit("time_update", lobby.timeLeft);
-
-    // Stop timer when time runs out
-    if (lobby.timeLeft <= 0) {
-      clearInterval(timer);
-      
-      // Find player with lowest points
-      const players = getLobbyPlayers(lobbyCode);
-      const sortedPlayers = [...players].sort((a, b) => a.points - b.points);
-      const eliminatedPlayer = sortedPlayers[0];
-
-      if (eliminatedPlayer) {
-        // Store eliminated player's data
-        eliminatedPlayers.set(eliminatedPlayer.id, {
-          name: eliminatedPlayer.name,
-          points: eliminatedPlayer.points,
-          eliminatedAt: Date.now()
-        });
-
-        // Remove the player from active players but keep in the leaderboard
-        lobby.players = lobby.players.filter(p => p.id !== eliminatedPlayer.id);
-
-        // Create combined leaderboard with both active and eliminated players
-        const leaderboard = [
-          ...lobby.players,
-          ...Array.from(eliminatedPlayers.values())
-        ].sort((a, b) => b.points - a.points);
-
-        // Emit elimination event
-        io.to(lobbyCode).emit("player_eliminated", {
-          playerId: eliminatedPlayer.id,
-          playerName: eliminatedPlayer.name,
-          leaderboard: leaderboard
-        });
-        
-        // Update the leaderboard for all players
-        io.to(lobbyCode).emit("leaderboard_update", {
-          players: leaderboard
-        });
-      }
-    }
-  }, 1000);
-}
 
 server.listen(3000, () => {
   console.log("Server listening on http://localhost:3000");

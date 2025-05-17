@@ -14,7 +14,6 @@ export default function Game() {
   const [countdown, setCountdown] = useState(null);
   const [cursorTrail, setCursorTrail] = useState([]);
   const [showTransition, setShowTransition] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(300);
   const [lastSubmission, setLastSubmission] = useState(null);
   const [showSubmissionResult, setShowSubmissionResult] = useState(false);
   const containerRef = useRef(null);
@@ -103,75 +102,78 @@ export default function Game() {
   useEffect(() => {
     // On component mount, check if we have player data
     const storedName = localStorage.getItem('playerName');
-    console.log("[Game] Initial player name from storage:", storedName);
+    console.log("Initial player name from storage:", storedName);
     
     if (storedName) {
       setPlayerName(storedName);
       // Re-join the battle with stored name
-      socket.emit('join_battle', { name: storedName, socketId: socket.id });
+      socket.emit('join_battle', storedName);
     }
 
     // Request initial player data
     socket.emit('get_players');
 
     socket.on("connect", () => {
-      console.log("[Game] Socket connected, ID:", socket.id);
+      console.log("Socket connected in Game, ID:", socket.id);
       if (storedName) {
-        console.log("[Game] Rejoining with stored name:", storedName);
-        socket.emit('join_battle', { name: storedName, socketId: socket.id });
+        console.log("Rejoining with stored name:", storedName);
+        socket.emit('join_battle', storedName);
       }
     });
 
     socket.on("players", (data) => {
-      console.log("[Game] Received players update:", data);
+      console.log("Received players update in Game:", data);
       if (Array.isArray(data)) {
+        // Update player names if they're missing
         const updatedPlayers = data.map(player => {
-          // If this is the current player, use stored name
-          if (player.id === socket.id) {
+          if (!player.name && player.id === socket.id) {
             return { ...player, name: storedName || 'Unknown Player' };
           }
-          // For other players, preserve their names
-          return { ...player, name: player.name || 'Unknown Player' };
+          return player;
         });
-        console.log("[Game] Setting players with updated data:", updatedPlayers);
+        console.log("Setting players with updated data:", updatedPlayers);
         setPlayers(updatedPlayers);
+      } else {
+        console.error("Received invalid players data:", data);
       }
     });
     
     socket.on("lobby_info", ({ lobbyCode, players }) => {
-      console.log("[Game] Received lobby info:", { lobbyCode, players });
+      console.log("Game received lobby info:", { lobbyCode, players });
       if (Array.isArray(players)) {
+        // Update player names if they're missing
         const updatedPlayers = players.map(player => {
-          // If this is the current player, use stored name
-          if (player.id === socket.id) {
+          if (!player.name && player.id === socket.id) {
             return { ...player, name: storedName || 'Unknown Player' };
           }
-          // For other players, preserve their names
-          return { ...player, name: player.name || 'Unknown Player' };
+          return player;
         });
-        console.log("[Game] Setting players from lobby info:", updatedPlayers);
+        console.log("Setting players from lobby info:", updatedPlayers);
         setPlayers(updatedPlayers);
+      } else {
+        console.error("Received invalid lobby players data:", players);
       }
     });
 
     socket.on("leaderboard_update", ({ players, submission }) => {
-      console.log("[Game] Received leaderboard update:", { players, submission });
+      console.log("Received leaderboard update:", { players, submission });
       if (Array.isArray(players)) {
+        // Update player names if they're missing
         const updatedPlayers = players.map(player => {
-          // If this is the current player, use stored name
-          if (player.id === socket.id) {
+          if (!player.name && player.id === socket.id) {
             return { ...player, name: storedName || 'Unknown Player' };
           }
-          // For other players, preserve their names
-          return { ...player, name: player.name || 'Unknown Player' };
+          return player;
         });
-        console.log("[Game] Setting players from leaderboard update:", updatedPlayers);
+        console.log("Setting players from leaderboard update:", updatedPlayers);
         setPlayers(updatedPlayers);
         if (submission) {
           setLastSubmission(submission);
           setShowSubmissionResult(true);
           setTimeout(() => setShowSubmissionResult(false), 3000);
         }
+      } else {
+        console.error("Received invalid leaderboard players data:", players);
       }
     });
 
@@ -192,35 +194,25 @@ export default function Game() {
       setTimeout(() => navigate(path), 2000);
     });
 
-    socket.on("time_update", (time) => {
-      setTimeLeft(time);
-    });
-
     socket.on("player_eliminated", ({ playerId, playerName, leaderboard }) => {
-      console.log("[Game] Player eliminated:", {
-        playerId,
-        playerName,
-        leaderboardLength: leaderboard?.length,
-        leaderboard
-      });
+      console.log("Player eliminated:", { playerId, playerName, leaderboard });
       setErrorMessage(`${playerName} has been eliminated!`);
       setShowError(true);
       setTimeout(() => setShowError(false), 3000);
       
+      // Update players with the new leaderboard data
       if (Array.isArray(leaderboard)) {
         setPlayers(leaderboard);
       }
     });
 
     return () => {
-      console.log("[Game] Cleaning up socket listeners");
       socket.off("connect");
       socket.off("players");
       socket.off("lobby_info");
       socket.off("countdown");
       socket.off("next_slide");
       socket.off("redirect");
-      socket.off("time_update");
       socket.off("leaderboard_update");
       socket.off("player_eliminated");
     };
@@ -632,11 +624,11 @@ export default function Game() {
       `}</style>
 
       <div ref={containerRef} 
-      className="h-screen w-screen bg-gradient-to-r from-[#1d0d00] via-black to-[#1d0d00] text-white font-['Orbitron'] overflow-hidden relative">
+        className="h-screen w-screen bg-gradient-to-r from-[#1d0d00] via-black to-[#1d0d00] text-white font-['Orbitron'] overflow-hidden relative">
         
-        {/* Add Timer Display */}
-        <div className="fixed top-5 right-5 text-[1.5vw] font-bold text-[#96fff2]">
-          Time Left: {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+        {/* Title */}
+        <div className="fixed top-[1%] left-[0.3%] text-[1.5vw] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-[silver] to-[#ff7700]">
+          Coding Battle Royale
         </div>
 
         {/* Navigation Buttons - Fixed Top Right */}
@@ -927,11 +919,6 @@ export default function Game() {
             {/* Leaderboard */}
             {renderLeaderboard()}
           </div>
-        </div>
-
-        {/* Title */}
-        <div className="fixed top-[1%] left-[0.3%] text-[1.5vw] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-[silver] to-[#ff7700]">
-          Coding Battle Royale
         </div>
 
         {/* Animated Text */}
