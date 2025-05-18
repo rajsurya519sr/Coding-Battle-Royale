@@ -29,6 +29,7 @@ export default function Game() {
   const [hintIndex, setHintIndex] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
   const [showError, setShowError] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   
   const levelQuestions = {
     1: {
@@ -621,6 +622,39 @@ export default function Game() {
         .animate-fade-in {
           animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
+
+        select option {
+          padding: 10px;
+          background: black !important;
+          color: #ff7700 !important;
+        }
+        
+        select option:hover {
+          background: black !important;
+          color: #ff7700 !important;
+          text-shadow: 0 0 8px rgba(255, 119, 0, 0.8);
+          box-shadow: 0 0 20px rgba(255, 119, 0, 0.5);
+        }
+        
+        select option:checked {
+          background: black !important;
+          color: #ff7700 !important;
+          text-shadow: 0 0 8px rgba(255, 119, 0, 0.8);
+        }
+
+        select:focus option:checked {
+          background: black !important;
+          color: #ff7700 !important;
+          text-shadow: 0 0 8px rgba(255, 119, 0, 0.8);
+        }
+
+        @-moz-document url-prefix() {
+          select option:hover {
+            background-color: black !important;
+            box-shadow: 0 0 20px rgba(255, 119, 0, 0.5);
+            text-shadow: 0 0 8px rgba(255, 119, 0, 0.8);
+          }
+        }
       `}</style>
 
       <div ref={containerRef} 
@@ -821,17 +855,48 @@ export default function Game() {
             <div className="w-[65%] bg-transparent rounded-lg">
               <div className="mb-6 flex justify-between items-center">
                 <h3 className="text-[2.5vw] font-bold text-[#96fff2] mb-3 font-mono">Choose Your Weapon</h3>
-                <select 
-                  className="w-[20%] cyber-border bg-black/40 p-3 rounded-md text-[#96fff2] focus:outline-none"
-                  value={language}
-                  onChange={handleLanguageChange}
-                >
-                  <option value="java">Java</option>
-                  <option value="python">Python</option>
-                  <option value="javascript">JavaScript</option>
-                  <option value="c">C</option>
-                  <option value="cpp">C++</option>
-                </select>
+                <div className="relative w-[20%]">
+                  <div 
+                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                    className="w-full cyber-border bg-black p-3 rounded-md text-[#ff7700] cursor-pointer
+                    border-2 border-[#ff7700] font-mono tracking-wider flex justify-between items-center
+                    hover:bg-[#ff7700]/10 transition-all duration-300"
+                  >
+                    <span>{language.toUpperCase()}</span>
+                    <svg 
+                      xmlns="http://www.w3.org/2000/svg" 
+                      className={`h-5 w-5 transition-transform duration-300 ${isDropdownOpen ? 'transform rotate-180' : ''}`} 
+                      fill="none" 
+                      viewBox="0 0 24 24" 
+                      stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                  
+                  {isDropdownOpen && (
+                    <div className="absolute w-full mt-2 bg-black border-2 border-[#ff7700] rounded-md overflow-hidden z-50">
+                      {['JAVA', 'PYTHON', 'JAVASCRIPT', 'C', 'C++'].map((lang) => (
+                        <div
+                          key={lang}
+                          onClick={() => {
+                            handleLanguageChange({ target: { value: lang.toLowerCase() } });
+                            setIsDropdownOpen(false);
+                          }}
+                          className="p-3 text-[#ff7700] cursor-pointer font-mono tracking-wider
+                          hover:bg-[#ff7700]/10 hover:shadow-[0_0_15px_rgba(255,119,0,0.5)] 
+                          transition-all duration-300 hover:text-[#ff7700]
+                          relative group"
+                        >
+                          {lang}
+                          <div className="absolute inset-0 opacity-0 group-hover:opacity-100
+                            transition-opacity duration-300 pointer-events-none
+                            shadow-[0_0_20px_rgba(255,119,0,0.5)]" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="w-full cyber-border rounded-lg overflow-hidden">
