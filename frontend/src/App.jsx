@@ -6,6 +6,7 @@ import Home from './pages/Home';
 // import Lobby from './pages/Lobby';
 import Game from "./pages/Game";
 import Matchmaking from "./pages/Matchmaking";
+import BattleReport from "./pages/BattleReport";
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
           {/* <Route path="/lobby" element={<Lobby />} /> */}
           <Route path="/game" element={<Game />} />
           <Route path="/matchmaking" element={<Matchmaking />} />
+          <Route path="/battle-report" element={<BattleReport />} />
           {/* Add more routes as needed */}
         </Routes>
       </SoundProvider>

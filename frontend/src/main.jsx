@@ -6,6 +6,7 @@ import Home from './pages/Home';
 // import Lobby from './pages/Lobby';
 import Game from './pages/Game';
 import Matchmaking from './pages/Matchmaking';
+import BattleReport from './pages/BattleReport';
 import './styles/index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -16,6 +17,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       {/* <Route path="/lobby" element={<Lobby />} /> */}
       <Route path="/game" element={<Game />} />
       <Route path="/Matchmaking" element={<Matchmaking />} />
+      <Route path="/battle-report" element={<BattleReport />} />
     </Routes>
   </BrowserRouter>
 );

@@ -12,11 +12,20 @@ export default function Matchmaking() {
   // const [isCreator, setIsCreator] = useState(false);
   const [cursorTrail, setCursorTrail] = useState([]);
   const [showTransition, setShowTransition] = useState(false);
+  const [showNameInput, setShowNameInput] = useState(false);
+  const [playerName, setPlayerName] = useState("");
   const socketRef = useRef(null);
   const [displayText, setDisplayText] = useState("");
   const fullText = "New era of Competition..........";
   const [index, setIndex] = useState(0);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showProfileCard, setShowProfileCard] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [isEditingPicture, setIsEditingPicture] = useState(false);
+  const [isFirstVisit, setIsFirstVisit] = useState(true);
+  const [socketId, setSocketId] = useState(null);
+  const [isNewUser, setIsNewUser] = useState(true);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -43,11 +52,14 @@ export default function Matchmaking() {
 
     socket.on("connect", () => {
       console.log("Socket connected in Matchmaking:", socket.id);
-      const storedName = localStorage.getItem('playerName');
+      setSocketId(socket.id);
+      const storedName = localStorage.getItem(`playerName_${socket.id}`);
       if (storedName) {
         console.log("Reconnecting with stored name:", storedName);
+        setPlayerName(storedName);
         socket.emit('join_battle', storedName);
         setJoined(true);
+        setIsNewUser(false);
       }
     });
 
@@ -79,13 +91,19 @@ export default function Matchmaking() {
   }, [navigate]);
 
   const handleJoinBattle = () => {
-    const storedName = localStorage.getItem('playerName');
-    if (storedName) {
-      console.log("Joining battle with name:", storedName);
-      socket.emit("join_battle", storedName);
+    setShowNameInput(true);
+  };
+
+  const handleNameSubmit = (e) => {
+    e.preventDefault();
+    if (playerName.trim() && socketId) {
+      console.log("Joining battle with name:", playerName);
+      localStorage.setItem(`playerName_${socketId}`, playerName.trim());
+      setPlayerName(playerName.trim());
+      socket.emit("join_battle", playerName.trim());
       setJoined(true);
-    } else {
-      navigate('/'); // Navigate back to home if no name is stored
+      setShowNameInput(false);
+      setIsNewUser(false);
     }
   };
 
@@ -114,6 +132,56 @@ export default function Matchmaking() {
   // Add click sound effect to buttons
   const handleButtonClick = () => {
     // playSound(SOUNDS.CLICK);
+  };
+
+  const handleProfileClick = () => {
+    handleButtonClick();
+    if (isFirstVisit && socketId) {
+      console.log("First visit, clearing data");
+      localStorage.removeItem(`playerName_${socketId}`);
+      localStorage.removeItem(`profilePicture_${socketId}`);
+      setPlayerName("");
+      setIsFirstVisit(false);
+    }
+    setShowProfileCard(true);
+  };
+
+  const handleCloseProfileCard = () => {
+    setShowProfileCard(false);
+  };
+
+  const handleNameEdit = () => {
+    setNewName(playerName || "");
+    setIsEditingName(true);
+  };
+
+  const handleNameSave = () => {
+    if (newName.trim() && socketId) {
+      console.log("Saving new name:", newName);
+      localStorage.setItem(`playerName_${socketId}`, newName.trim());
+      setPlayerName(newName.trim());
+      socket.emit("update_name", newName.trim());
+      setIsEditingName(false);
+    }
+  };
+
+  const handlePictureChange = (e) => {
+    const file = e.target.files[0];
+    if (file && socketId) {
+      console.log("Changing profile picture");
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const imageData = e.target.result;
+        console.log("Saving new profile picture");
+        localStorage.setItem(`profilePicture_${socketId}`, imageData);
+        socket.emit("update_profile_picture", imageData);
+        setIsEditingPicture(false);
+        // Force a re-render of the profile card
+        setShowProfileCard(false);
+        setTimeout(() => setShowProfileCard(true), 100);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   return (
@@ -228,51 +296,279 @@ export default function Matchmaking() {
           border: 0.5px solid rgba(255, 120, 0, 0.1);
           animation: gridAnimation 3s infinite alternate ease-in-out;
         }
-                  @keyframes rgbGlow {
+        @keyframes rgbGlow {
+          0%, 100% { box-shadow: 0 0 5px #ff7700; }
+        }
+
+        .signup-login-container {
+          box-shadow: 0 0 5px #ff7700;
+        }
+
+        .name-input-overlay {
+          background: rgba(0, 0, 0, 0.8);
+          backdrop-filter: blur(8px);
+        }
         
-    0% { box-shadow: 0 0 5px #96fff2; }  /* Red */
-    // 25% { box-shadow: 0 0 10px #ff7700; } /* Green */
-    50% { box-shadow: 0 0 15px #ff7700; } /* Blue */
-    // 75% { box-shadow: 0 0 10px #ff7700; } /* Magenta */
-    100% { box-shadow: 0 0 5px #96fff2; } /* Back to Red */
-  }
+        .name-input {
+          background: rgba(255, 119, 0, 0.1);
+          border: 2px solid #ff7700;
+          color: #96fff2;
+          transition: all 0.3s ease;
+        }
+        
+        .name-input:focus {
+          border-color: #96fff2;
+          box-shadow: 0 0 15px rgba(150, 255, 242, 0.5);
+          outline: none;
+        }
+        
+        .submit-button {
+          background: rgba(255, 119, 0, 0.2);
+          border: 2px solid #ff7700;
+          color: #96fff2;
+          transition: all 0.3s ease;
+        }
+        
+        .submit-button:hover {
+          background: rgba(255, 119, 0, 0.4);
+          box-shadow: 0 0 20px rgba(255, 119, 0, 0.5);
+        }
 
-  .signup-login-container {
-    animation: rgbGlow 3s infinite alternate ease-in-out;
-  }
+        .profile-icon {
+          transition: all 0.3s ease;
+          position: relative;
+          filter: drop-shadow(0 0 10px rgba(255, 119, 0, 0.3));
+        }
 
-  .name-input-overlay {
-    background: rgba(0, 0, 0, 0.8);
-    backdrop-filter: blur(8px);
-  }
-  
-  .name-input {
-    background: rgba(255, 119, 0, 0.1);
-    border: 2px solid #ff7700;
-    color: #96fff2;
-    transition: all 0.3s ease;
-  }
-  
-  .name-input:focus {
-    border-color: #96fff2;
-    box-shadow: 0 0 15px rgba(150, 255, 242, 0.5);
-    outline: none;
-  }
-  
-  .submit-button {
-    background: rgba(255, 119, 0, 0.2);
-    border: 2px solid #ff7700;
-    color: #96fff2;
-    transition: all 0.3s ease;
-  }
-  
-  .submit-button:hover {
-    background: rgba(255, 119, 0, 0.4);
-    box-shadow: 0 0 20px rgba(255, 119, 0, 0.5);
-  }
+        .profile-icon:hover {
+          transform: scale(1.1);
+          filter: drop-shadow(0 0 15px rgba(255, 119, 0, 0.5));
+        }
+
+        .profile-icon:hover::after {
+          content: 'Dev Card';
+          position: absolute;
+          top: 50%;
+          right: calc(100% + 15px);
+          transform: translateY(-50%);
+          background: linear-gradient(135deg, rgba(0, 0, 0, 0.95), rgba(29, 13, 0, 0.95));
+          color: #96fff2;
+          padding: 8px 16px;
+          border-radius: 8px;
+          font-size: 0.9rem;
+          white-space: nowrap;
+          border: 1px solid #ff7700;
+          box-shadow: 0 0 20px rgba(255, 119, 0, 0.2),
+                     inset 0 0 10px rgba(255, 119, 0, 0.1);
+          backdrop-filter: blur(4px);
+          animation: tooltipFade 0.3s ease-in-out;
+          font-family: 'Orbitron', sans-serif;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+        }
+
+        .profile-icon:hover::before {
+          content: '';
+          position: absolute;
+          top: 50%;
+          right: calc(100% + 5px);
+          transform: translateY(-50%);
+          border-left: 10px solid #ff7700;
+          border-top: 6px solid transparent;
+          border-bottom: 6px solid transparent;
+          filter: drop-shadow(0 0 5px rgba(255, 119, 0, 0.5));
+          animation: tooltipFade 0.3s ease-in-out;
+        }
+
+        @keyframes tooltipFade {
+          from {
+            opacity: 0;
+            transform: translate(-10px, -50%);
+          }
+          to {
+            opacity: 1;
+            transform: translate(0, -50%);
+          }
+        }
+
+        .profile-icon-inner {
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(45deg, #ff7700, #ff9955);
+          border-radius: 16px;
+          padding: 2px;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .profile-icon-inner::before {
+          content: '';
+          position: absolute;
+          inset: -2px;
+          background: conic-gradient(
+            from 0deg,
+            transparent 0deg,
+            #96fff2 60deg,
+            transparent 120deg,
+            #ff7700 180deg,
+            transparent 240deg,
+            #96fff2 300deg,
+            transparent 360deg
+          );
+          animation: rotate 4s linear infinite;
+          opacity: 0.8;
+        }
+
+        @keyframes rotate {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(360deg);
+          }
+        }
+
+        .profile-icon-content {
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(135deg, #1d0d00, #000000);
+          border-radius: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+          z-index: 1;
+          box-shadow: inset 0 0 15px rgba(255, 119, 0, 0.2);
+        }
+
+        .profile-icon svg {
+          filter: drop-shadow(0 0 3px rgba(255, 119, 0, 0.7));
+        }
       `}</style>
 
       <div className="h-screen w-screen bg-gradient-to-r from-[#1d0d00] via-[black] to-[#1d0d00] text-white relative flex items-center justify-center font-['Orbitron'] overflow-hidden">
+        {/* Profile Icon - Show for both new and existing users */}
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5 }}
+          className="fixed top-4 right-4 z-50"
+        >
+          <button
+            onClick={handleProfileClick}
+            className="profile-icon w-14 h-14 cursor-pointer"
+            onMouseEnter={handleButtonHover}
+          >
+            <div className="profile-icon-inner">
+              <div className="profile-icon-content">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-8 w-8"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  strokeWidth="1.5"
+                >
+                  <defs>
+                    <linearGradient id="gradient-stroke" x1="2" y1="2" x2="22" y2="22">
+                      <stop offset="0%" stopColor="#ff7700" />
+                      <stop offset="50%" stopColor="#ff9955" />
+                      <stop offset="100%" stopColor="#96fff2" />
+                    </linearGradient>
+                    <filter id="glow">
+                      <feGaussianBlur stdDeviation="1" result="coloredBlur"/>
+                      <feMerge>
+                        <feMergeNode in="coloredBlur"/>
+                        <feMergeNode in="SourceGraphic"/>
+                      </feMerge>
+                    </filter>
+                  </defs>
+
+                  {/* Outer Frame */}
+                  <path
+                    d="M5 8L12 4L19 8V16L12 20L5 16V8Z"
+                    stroke="url(#gradient-stroke)"
+                    fill="none"
+                    strokeWidth="0.5"
+                  />
+
+                  {/* Inner Frame */}
+                  <path
+                    d="M7 9L12 6L17 9V15L12 18L7 15V9Z"
+                    stroke="url(#gradient-stroke)"
+                    fill="rgba(255, 119, 0, 0.1)"
+                    filter="url(#glow)"
+                  />
+
+                  {/* Center Circle */}
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="3"
+                    stroke="url(#gradient-stroke)"
+                    fill="none"
+                    strokeDasharray="0.5 1"
+                  >
+                    <animateTransform
+                      attributeName="transform"
+                      type="rotate"
+                      from="0 12 12"
+                      to="360 12 12"
+                      dur="4s"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+
+                  {/* Triangular Pattern */}
+                  <path
+                    d="M12 9L14 12L12 15L10 12L12 9Z"
+                    fill="url(#gradient-stroke)"
+                    filter="url(#glow)"
+                  />
+
+                  {/* Connection Lines */}
+                  <path
+                    d="M12 4V6M19 8L17 9M5 8L7 9M12 18V20M19 16L17 15M5 16L7 15"
+                    stroke="url(#gradient-stroke)"
+                    strokeWidth="0.5"
+                    strokeDasharray="0.5 1"
+                  >
+                    <animate
+                      attributeName="stroke-dashoffset"
+                      values="6;0"
+                      dur="3s"
+                      repeatCount="indefinite"
+                    />
+                  </path>
+
+                  {/* Corner Accents */}
+                  <circle cx="12" cy="4" r="0.5" fill="url(#gradient-stroke)" />
+                  <circle cx="19" cy="8" r="0.5" fill="url(#gradient-stroke)" />
+                  <circle cx="19" cy="16" r="0.5" fill="url(#gradient-stroke)" />
+                  <circle cx="12" cy="20" r="0.5" fill="url(#gradient-stroke)" />
+                  <circle cx="5" cy="16" r="0.5" fill="url(#gradient-stroke)" />
+                  <circle cx="5" cy="8" r="0.5" fill="url(#gradient-stroke)" />
+
+                  {/* Energy Core */}
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="1"
+                    fill="url(#gradient-stroke)"
+                    filter="url(#glow)"
+                  >
+                    <animate
+                      attributeName="r"
+                      values="0.8;1.2;0.8"
+                      dur="2s"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+                </svg>
+              </div>
+            </div>
+          </button>
+        </motion.div>
+
         {/* Title */}
         <div className="fixed top-[1%] left-[0.3%] text-[1.5vw] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-[silver] to-[#ff7700]">
           Coding Battle Royale
@@ -324,6 +620,87 @@ export default function Matchmaking() {
           </div>
         )}
 
+        {showNameInput && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="fixed inset-0 name-input-overlay z-50 flex items-center justify-center"
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-black/80 p-8 rounded-lg border-2 border-[#ff7700] w-[500px]"
+            >
+              <h2 className="text-2xl font-bold text-center mb-6 text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] to-[#96fff2]">
+                Welcome to Coding Battle Royale
+              </h2>
+              <form onSubmit={handleNameSubmit} className="space-y-6">
+                <div className="space-y-4">
+                  <div className="flex justify-center mb-6">
+                    <div className="relative">
+                      <div className="w-32 h-32 rounded-full bg-gradient-to-br from-[#ff7700] to-[#96fff2] p-[2px] group cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-[0_0_15px_rgba(255,119,0,0.5)]">
+                        <div className="w-full h-full rounded-full bg-black flex items-center justify-center relative overflow-hidden">
+                          <div className="absolute inset-0 bg-gradient-to-r from-[#ff7700] to-[#96fff2] opacity-0 group-hover:opacity-20 transition-opacity duration-300" />
+                          {socketId && localStorage.getItem(`profilePicture_${socketId}`) ? (
+                            <img 
+                              src={localStorage.getItem(`profilePicture_${socketId}`)} 
+                              alt="Profile" 
+                              className="w-full h-full object-cover rounded-full"
+                            />
+                          ) : (
+                            <svg 
+                              xmlns="http://www.w3.org/2000/svg" 
+                              className="h-16 w-16 text-[#ff7700] transition-transform duration-300 group-hover:scale-110 group-hover:text-[#96fff2]" 
+                              fill="none" 
+                              viewBox="0 0 24 24" 
+                              stroke="currentColor"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                          )}
+                        </div>
+                      </div>
+                      <label className="absolute bottom-0 right-0 bg-[#ff7700] text-black rounded-full p-1.5 hover:bg-[#96fff2] transition-colors duration-300 cursor-pointer">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handlePictureChange}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[#96fff2] text-sm font-bold mb-2">
+                      Choose Your Battle Name
+                    </label>
+                    <input
+                      type="text"
+                      value={playerName}
+                      onChange={(e) => setPlayerName(e.target.value)}
+                      className="name-input w-full px-4 py-3 rounded-lg text-lg font-mono"
+                      placeholder="Enter your battle name..."
+                      autoFocus
+                      maxLength={20}
+                    />
+                  </div>
+                </div>
+                <button
+                  type="submit"
+                  className="submit-button w-full py-3 rounded-lg text-lg font-bold uppercase tracking-wider"
+                  disabled={!playerName.trim()}
+                >
+                  Enter Arena
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+
         {!showTransition && (
           <motion.div
             initial={{ opacity: 1 }}
@@ -364,48 +741,66 @@ export default function Matchmaking() {
             ))}
 
             {!joined ? (
+              
               <motion.div className="absolute inset-0 flex flex-col items-center justify-center text-center font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-[#ff7700] to-[#ff7700] z-20">
-                <div className="absolute top-[46%] left-[-3.5%] w-full z-40">
-                  <img
-                    src="/logo1.png"
-                    alt="Coding Battle Royale Logo"
-                    className="w-[32%] h-[32%] object-contain animate-pulse z-40"
-                    // style={{ transform: "scaleX(-1)" }}
-                  />
-                </div>
-                <div className="absolute top-[46%] left-[71.5%] w-full z-40">
-                  <img
-                    src="/logo1.png"
-                    alt="Coding Battle Royale Logo"
-                    className="w-[32%] h-[32%] object-contain animate-pulse z-40"
-                    style={{ transform: "scaleX(-1)" }}
-                  />
-                </div>
-                <motion.h1
-                  className="text-[4vw] max-w-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-silver to-[#ff7700] mb-0"
-                >
-                  Decrypting Lobby Access...
-                </motion.h1>
-                <motion.p className="text-lg text-[#96fff2] mb-12 font-mono">
-                  Top warriors assemble here. Click to unlock your arena.
-                </motion.p>
-                <motion.button
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  className="w-32 h-32 bg-black/80 neon-border text-white text-lg font-bold uppercase tracking-widest transition-all duration-200 cursor-pointer rounded-full flex items-center justify-center z-50"
-                  onClick={() => {
-                    handleButtonClick();
-                    handleJoinBattle();
-                  }}
-                  onMouseEnter={handleButtonHover}
-                >
-                  Join Battle
-                </motion.button>
-              </motion.div>
+              <div className="absolute top-[46%] left-[-3.5%] w-full z-40">
+            <img
+              src="/logo1.png"
+              alt="Coding Battle Royale Logo"
+              className="w-[32%] h-[32%] object-contain animate-pulse z-40"
+              // style={{ transform: "scaleX(-1)" }}
+            />
+          </div>
+          <div className="absolute top-[46%] left-[71.5%] w-full z-40">
+            <img
+              src="/logo1.png"
+              alt="Coding Battle Royale Logo"
+              className="w-[32%] h-[32%] object-contain animate-pulse z-40"
+              style={{ transform: "scaleX(-1)" }}
+            />
+          </div>
+              <motion.h1
+                className="text-[4vw] max-w-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-silver to-[#ff7700] mb-0"
+              >
+                Decrypting Lobby Access...
+              </motion.h1>
+            
+              <motion.p className="text-lg text-[#96fff2] mb-12 font-mono">
+                Top warriers assemble here. Click to unlock your arena.
+              </motion.p>
+            
+              <motion.button
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                className="w-32 h-32 bg-black/80 neon-border text-white text-lg font-bold uppercase tracking-widest transition-all duration-200 cursor-pointer rounded-full flex items-center justify-center z-50"
+                onClick={() => {
+                  handleButtonClick();
+                  handleJoinBattle();
+                }}
+                onMouseEnter={handleButtonHover}
+              >
+                Join Battle
+              </motion.button>
+            </motion.div>
+            
             ) : (
               <>
                 {joined && (
                   <>
+                    {/* <motion.div 
+                      initial={{ opacity: 0, y: -20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5 }}
+                      className="absolute top-[5%] w-full text-center"
+                    >
+                      <h1 className="text-[3vw] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-silver to-[#ff7700]">
+                        Welcome to the Arena
+                      </h1>
+                      <p className="text-[1.2vw] text-[#96fff2] mt-2 font-mono">
+                        Prepare for the ultimate coding showdown
+                      </p>
+                    </motion.div> */}
+
                     <motion.div 
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -494,6 +889,225 @@ export default function Matchmaking() {
               </>
             )}
           </motion.div>
+        )}
+
+        {/* Profile Card - Show for both new and existing users */}
+        {showProfileCard && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            onClick={handleCloseProfileCard}
+          >
+            <motion.div
+              initial={{ y: 50, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.1, duration: 0.3 }}
+              className="relative w-[400px] bg-gradient-to-br from-[#1d0d00] to-black rounded-2xl p-6 border border-[#ff7700]/30 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close Button */}
+              <button
+                onClick={handleCloseProfileCard}
+                className="absolute top-4 right-4 text-[#ff7700] hover:text-[#96fff2] transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+
+              {/* Card Content */}
+              <div className="space-y-6">
+                {/* Profile Header */}
+                <div className="flex items-center space-x-4">
+                  <div className="relative">
+                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#ff7700] to-[#96fff2] p-[2px] group cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-[0_0_15px_rgba(255,119,0,0.5)]">
+                      <div className="w-full h-full rounded-full bg-black flex items-center justify-center relative overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-to-r from-[#ff7700] to-[#96fff2] opacity-0 group-hover:opacity-20 transition-opacity duration-300" />
+                        {socketId && localStorage.getItem(`profilePicture_${socketId}`) ? (
+                          <img 
+                            src={localStorage.getItem(`profilePicture_${socketId}`)} 
+                            alt="Profile" 
+                            className="w-full h-full object-cover rounded-full"
+                          />
+                        ) : (
+                          <svg 
+                            xmlns="http://www.w3.org/2000/svg" 
+                            className="h-12 w-12 text-[#ff7700] transition-transform duration-300 group-hover:scale-110 group-hover:text-[#96fff2]" 
+                            fill="none" 
+                            viewBox="0 0 24 24" 
+                            stroke="currentColor"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setIsEditingPicture(true)}
+                      className="absolute bottom-0 right-0 bg-[#ff7700] text-black rounded-full p-1.5 hover:bg-[#96fff2] transition-colors duration-300"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="flex-1">
+                    {isEditingName ? (
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="text"
+                          value={newName}
+                          onChange={(e) => setNewName(e.target.value)}
+                          className="bg-black/50 border border-[#ff7700] rounded px-2 py-1 text-[#96fff2] focus:outline-none focus:border-[#96fff2]"
+                          placeholder="Enter new name"
+                          maxLength={20}
+                          autoFocus
+                        />
+                        <button
+                          onClick={handleNameSave}
+                          className="bg-[#ff7700] text-black px-2 py-1 rounded hover:bg-[#96fff2] transition-colors duration-300"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setIsEditingName(false)}
+                          className="bg-black/50 text-[#96fff2] px-2 py-1 rounded hover:bg-[#ff7700] transition-colors duration-300"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-2">
+                        <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] to-[#96fff2] group-hover:from-[#96fff2] group-hover:to-[#ff7700] transition-all duration-300">
+                          {playerName || "Anonymous"}
+                        </h2>
+                        <button
+                          onClick={handleNameEdit}
+                          className="text-[#ff7700] hover:text-[#96fff2] transition-colors duration-300"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+                    <p className="text-[#96fff2]/80 text-sm group-hover:text-[#96fff2] transition-colors duration-300">
+                      Coding Warrior
+                    </p>
+                  </div>
+                </div>
+
+                {/* Stats Section */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-[#ff7700]/10 rounded-lg p-4 border border-[#ff7700]/20 hover:bg-[#ff7700]/20 transition-all duration-300">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[#96fff2]/60 text-sm">Battles Won</p>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-[#ff7700]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                      </svg>
+                    </div>
+                    <div className="flex items-end space-x-2">
+                      <p className="text-2xl font-bold text-[#ff7700]">0</p>
+                      <p className="text-[#96fff2]/60 text-sm mb-1">victories</p>
+                    </div>
+                  </div>
+                  <div className="bg-[#ff7700]/10 rounded-lg p-4 border border-[#ff7700]/20 hover:bg-[#ff7700]/20 transition-all duration-300">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[#96fff2]/60 text-sm">Total Score</p>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-[#ff7700]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                    </div>
+                    <div className="flex items-end space-x-2">
+                      <p className="text-2xl font-bold text-[#ff7700]">0</p>
+                      <p className="text-[#96fff2]/60 text-sm mb-1">points</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Accuracy and Problems Tackled Section */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-[#ff7700]/10 rounded-lg p-4 border border-[#ff7700]/20 hover:bg-[#ff7700]/20 transition-all duration-300">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[#96fff2]/60 text-sm">Accuracy</p>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-[#ff7700]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div className="relative h-2 bg-[#ff7700]/20 rounded-full overflow-hidden">
+                      <div className="absolute top-0 left-0 h-full w-[75%] bg-gradient-to-r from-[#ff7700] to-[#ff9955] rounded-full"></div>
+                    </div>
+                    <p className="text-2xl font-bold text-[#ff7700] mt-2">75%</p>
+                  </div>
+                  <div className="bg-[#ff7700]/10 rounded-lg p-4 border border-[#ff7700]/20 hover:bg-[#ff7700]/20 transition-all duration-300">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[#96fff2]/60 text-sm">Problems Tackled</p>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-[#ff7700]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      </svg>
+                    </div>
+                    <div className="flex items-end space-x-2">
+                      <p className="text-2xl font-bold text-[#ff7700]">24</p>
+                      <p className="text-[#96fff2]/60 text-sm mb-1">problems</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Button */}
+                <div className="flex justify-center w-full">
+                  <button
+                    onClick={() => {
+                      handleCloseProfileCard();
+                      navigate('/battle-report');
+                    }}
+                    className="px-12 py-3 neon-border text-[#96fff2]/60 rounded-full text-lg hover:bg-[#ff7700]/10 transition-all duration-300 w-[200px]"
+                  >
+                    Battle Report
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* Picture Upload Modal */}
+        {isEditingPicture && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="bg-gradient-to-br from-[#1d0d00] to-black p-6 rounded-lg border border-[#ff7700]/30 w-96">
+              <h3 className="text-xl font-bold text-[#96fff2] mb-4">Change Profile Picture</h3>
+              <div className="space-y-4">
+                <div className="flex justify-center">
+                  <label className="cursor-pointer">
+                    <div className="w-32 h-32 rounded-full bg-gradient-to-br from-[#ff7700] to-[#96fff2] p-[2px] hover:scale-105 transition-transform duration-300">
+                      <div className="w-full h-full rounded-full bg-black flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-[#ff7700]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePictureChange}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+                <div className="flex justify-end space-x-2">
+                  <button
+                    onClick={() => setIsEditingPicture(false)}
+                    className="px-4 py-2 rounded bg-black/50 text-[#96fff2] hover:bg-[#ff7700] transition-colors duration-300"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </>
