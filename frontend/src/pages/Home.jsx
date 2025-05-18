@@ -14,6 +14,8 @@ export default function ExtendedPage() {
   const [showLoader, setShowLoader] = useState(true);
   const [signup, setSignupVisible] = useState(false);
   const [login, setLoginVisible] = useState(false);
+  const [showNameInput, setShowNameInput] = useState(false);
+  const [playerName, setPlayerName] = useState("");
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -83,6 +85,15 @@ export default function ExtendedPage() {
 
   const handleNavigateToMatchmaking = () => {
     navigate('/matchmaking');
+  };
+
+  const handleNameSubmit = (e) => {
+    e.preventDefault();
+    if (playerName.trim()) {
+      localStorage.setItem('playerName', playerName);
+      setShowNameInput(false);
+      navigate('/matchmaking');
+    }
   };
 
   return (
@@ -388,113 +399,165 @@ export default function ExtendedPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.8 }}
         className="signup-login-container fixed justify-center items-center top-[7%] left-[25%] w-[690px] h-[550px] flex bg-black/40 bg-opacity-10 backdrop-blur-md rounded-lg space-x-8 z-20">
+          {!showNameInput ? (
+            <>
+              <motion.h3
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3, duration: 0.8 }}
+                className="absolute top-[-4%] text-[3vw] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-[silver] to-[#ff7700] mt-16"
+              >
+                Join the Battle. Become a Legend
+              </motion.h3>
 
-        <motion.h3
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3, duration: 0.8 }}
-            className="absolute top-[-4%]  text-[3vw] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-[silver] to-[#ff7700] mt-16"
-          >
-            Join the Battle. Become a Legend
-          </motion.h3>
+              <motion.p
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5, duration: 1 }}
+                className="absolute top-[14%] text-[1.1vw] text-transparent bg-clip-text bg-gradient-to-r from-[#96fff2] to-[#96fff2] mt-4"
+              >
+                Step into the coding arena and prove your skills against the best. The war for supremacy begins NOW!
+              </motion.p>
 
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5, duration: 1 }}
-            className="absolute top-[14%] text-[1.1vw] text-transparent bg-clip-text bg-gradient-to-r from-[#96fff2] to-[#96fff2] mt-4"
-          >
-            Step into the coding arena and prove your skills against the best. The war for supremacy begins NOW!
-          </motion.p>
+              <motion.label
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5, duration: 1 }} 
+              className="absolute top-[29%] left-[13%] text-lg text-[#96fff2] mb-2">
+                Email/Mobile
+              </motion.label>
 
-          <motion.label
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, duration: 1 }} 
-          className="absolute top-[29%] left-[13%] text-lg text-[#96fff2] mb-2">
-            Email/Mobile
-          </motion.label>
+              <motion.input
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5, duration: 1 }}
+                type="text"
+                placeholder="Enter your email/mobile number"
+                // value={email}
+                // onChange={(e) => setEmail(e.target.value)}
+                // onBlur={() => handleBlur("email")}
+                className="absolute w-full max-w-md top-[33.5%] left-[13%] px-4 py-3 text-lg text-white bg-black border-2 border-[#96fff2] rounded-lg outline-none focus:ring-2 focus:ring-[#96fff2] cyan-300 focus:border-[#96fff2] placeholder-gray-400 transition-all  focus:shadow-[0_0_20px_rgba(0,255,255,1)]"
+              />
+              
 
-          <motion.input
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, duration: 1 }}
-            type="text"
-            placeholder="Enter your email/mobile number"
-            // value={email}
-            // onChange={(e) => setEmail(e.target.value)}
-            // onBlur={() => handleBlur("email")}
-            className="absolute w-full max-w-md top-[33.5%] left-[13%] px-4 py-3 text-lg text-white bg-black border-2 border-[#96fff2] rounded-lg outline-none focus:ring-2 focus:ring-[#96fff2] cyan-300 focus:border-[#96fff2] placeholder-gray-400 transition-all  focus:shadow-[0_0_20px_rgba(0,255,255,1)]"
-          />
-          
+              <motion.label
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5, duration: 1 }} 
+              className="absolute top-[44%] left-[13%] text-lg text-[#96fff2] mb-2">
+                Create Password
+              </motion.label>
+              <motion.input
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5, duration: 1 }}
+                type="text"
+                placeholder="Create your password"
+                className="absolute w-full max-w-md top-[48.5%] left-[13%] px-4 py-3 text-lg text-white bg-black border-2 border-[#96fff2] rounded-lg outline-none focus:ring-2 focus:ring-[#96fff2] cyan-300 focus:border-[#96fff2] placeholder-gray-400 transition-all  focus:shadow-[0_0_20px_rgba(0,255,255,1)]"
+              />
 
-          <motion.label
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, duration: 1 }} 
-          className="absolute top-[44%] left-[13%] text-lg text-[#96fff2] mb-2">
-            Create Password
-          </motion.label>
-          <motion.input
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, duration: 1 }}
-            type="text"
-            placeholder="Create your password"
-            className="absolute w-full max-w-md top-[48.5%] left-[13%] px-4 py-3 text-lg text-white bg-black border-2 border-[#96fff2] rounded-lg outline-none focus:ring-2 focus:ring-[#96fff2] cyan-300 focus:border-[#96fff2] placeholder-gray-400 transition-all  focus:shadow-[0_0_20px_rgba(0,255,255,1)]"
-          />
+              <motion.label
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5, duration: 1 }} 
+              className="absolute top-[59%] left-[13%] text-lg text-[#96fff2] mb-2">
+                Confirm Password
+              </motion.label>
+              <motion.input
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5, duration: 1 }}
+                type="text"
+                placeholder="Confirm password"
+                className="absolute w-full max-w-md top-[63.5%] left-[13%] px-4 py-3 text-lg text-white bg-black border-2 border-[#96fff2] rounded-lg outline-none focus:ring-2 focus:ring-[#96fff2] focus:border-[#96fff2] placeholder-gray-400 transition-all  focus:shadow-[0_0_20px_rgba(0,255,255,1)]"
+              />
 
-          <motion.label
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, duration: 1 }} 
-          className="absolute top-[59%] left-[13%] text-lg text-[#96fff2] mb-2">
-            Confirm Password
-          </motion.label>
-          <motion.input
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, duration: 1 }}
-            type="text"
-            placeholder="Confirm password"
-            className="absolute w-full max-w-md top-[63.5%] left-[13%] px-4 py-3 text-lg text-white bg-black border-2 border-[#96fff2] rounded-lg outline-none focus:ring-2 focus:ring-[#96fff2] focus:border-[#96fff2] placeholder-gray-400 transition-all  focus:shadow-[0_0_20px_rgba(0,255,255,1)]"
-          />
+              {/* Register section Enter the Battlefield button */}
+              <motion.button
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5, duration: 1 }}
+              onClick={() => setShowNameInput(true)}
+              className="absolute px-8 py-4 top-[79%] left-[22.5%] bg-black/50 text-[#ff7700] neon-border-sl rounded-lg transition-all duration-200 cursor-pointer hover:scale-105 text-lg uppercase tracking-wider">
+                Enter the Battlefield
+              </motion.button>
 
-          {/* Register section Enter the Battlefield button */}
+              <motion.p
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5, duration: 1 }}
+                onClick={() => {
+                  handleLoginClick();
+                  setSignupVisible(false);
+                }}
+                className="absolute top-[89%] left-[21%] text-[1.4vw] text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] to-[#ff7700] mt-4"
+              >
+                already a member of this battlefield ? <a href="#" className="text-[#96fff2] relative before:absolute before:inset-0 before:blur-md before:content-['Login'] before:text-[#96fff2] before:opacity-100 text-[1.6vw] ml-2"> Login</a>
+              </motion.p>
+            </>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="w-full h-full flex flex-col items-center justify-center relative"
+            >
+              <motion.h1
+                className="text-[2.5vw] max-w-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-silver to-[#ff7700] mb-4"
+              >
+                Choose Your Battle Identity
+              </motion.h1>
+              <motion.p className="text-lg text-[#96fff2] mb-8 font-mono">
+                Your legend begins with a name. Choose wisely.
+              </motion.p>
+
+              <form onSubmit={handleNameSubmit} className="w-full max-w-md space-y-6">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={playerName}
+                    onChange={(e) => setPlayerName(e.target.value)}
+                    className="w-full px-4 py-3 text-lg text-[#96fff2] bg-black/80 border-2 border-[#ff7700] rounded-lg outline-none 
+                    focus:ring-2 focus:ring-[#ff7700] focus:border-[#ff7700] placeholder-gray-500
+                    transition-all duration-300 hover:bg-[#ff7700]/10"
+                    placeholder="Enter your battle name..."
+                    autoFocus
+                    maxLength={20}
+                  />
+                </div>
+                <div className="flex flex-col gap-4">
+                  <button
+                    type="submit"
+                    disabled={!playerName.trim()}
+                    className="w-full px-8 py-4 bg-black/80 text-[#ff7700] border-2 border-[#ff7700] rounded-lg 
+                    transition-all duration-300 cursor-pointer hover:bg-[#ff7700]/10 text-lg uppercase tracking-wider
+                    disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-black/80"
+                  >
+                    Enter The Arena
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowNameInput(false)}
+                    className="w-full px-8 py-4 bg-transparent text-[#96fff2] border-2 border-[#96fff2] rounded-lg 
+                    transition-all duration-300 cursor-pointer hover:bg-[#96fff2]/10 text-lg uppercase tracking-wider"
+                  >
+                    Return
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          )}
+
           <motion.button
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, duration: 1 }}
-          onClick={() => {
-            handleNavigateToMatchmaking();
-            setSignupVisible(false);
-          }}
-          className="absolute px-8 py-4 top-[79%] left-[22.5%] bg-black/50 text-[#ff7700] neon-border-sl rounded-lg transition-all duration-200 cursor-pointer hover:scale-105 text-lg uppercase tracking-wider">
-            Enter the Battlefield
-          </motion.button>
-
-          <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5, duration: 1 }}
             onClick={() => {
-              handleLoginClick();
               setSignupVisible(false);
+              setShowNameInput(false);
             }}
-            className="absolute top-[89%] left-[21%] text-[1.4vw] text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] to-[#ff7700] mt-4"
+            className="absolute close px-3 py-2 top-1 right-1 bg-black/50 text-[#ff7700] neon-border-cross rounded-lg transition-all duration-200 cursor-pointer hover:scale-105 text-xl uppercase tracking-wider"
           >
-            already a member of this battlefield ? <a href="#" className="text-[#96fff2] relative before:absolute before:inset-0 before:blur-md before:content-['Login'] before:text-[#96fff2] before:opacity-100 text-[1.6vw] ml-2"> Login</a>
-          </motion.p>
-
-          <motion.button
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, duration: 1 }}
-          onClick={() => {
-            setSignupVisible(false);
-          }}
-          className="absolute close px-3 py-2 top-1 right-1  bg-black/50 text-[#ff7700] neon-border-cross rounded-lg transition-all duration-200 cursor-pointer hover:scale-105 text-xl uppercase tracking-wider">
-          ⛌
+            ⛌
           </motion.button>
         </motion.div>
           )}

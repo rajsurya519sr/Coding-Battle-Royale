@@ -12,8 +12,6 @@ export default function Matchmaking() {
   // const [isCreator, setIsCreator] = useState(false);
   const [cursorTrail, setCursorTrail] = useState([]);
   const [showTransition, setShowTransition] = useState(false);
-  const [showNameInput, setShowNameInput] = useState(false);
-  const [playerName, setPlayerName] = useState("");
   const socketRef = useRef(null);
   const [displayText, setDisplayText] = useState("");
   const fullText = "New era of Competition..........";
@@ -81,17 +79,13 @@ export default function Matchmaking() {
   }, [navigate]);
 
   const handleJoinBattle = () => {
-    setShowNameInput(true);
-  };
-
-  const handleNameSubmit = (e) => {
-    e.preventDefault();
-    if (playerName.trim()) {
-      console.log("Joining battle with name:", playerName);
-      localStorage.setItem('playerName', playerName);
-      socket.emit("join_battle", playerName);
+    const storedName = localStorage.getItem('playerName');
+    if (storedName) {
+      console.log("Joining battle with name:", storedName);
+      socket.emit("join_battle", storedName);
       setJoined(true);
-      setShowNameInput(false);
+    } else {
+      navigate('/'); // Navigate back to home if no name is stored
     }
   };
 
@@ -330,42 +324,6 @@ export default function Matchmaking() {
           </div>
         )}
 
-        {showNameInput && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="fixed inset-0 name-input-overlay z-50 flex items-center justify-center"
-          >
-            <motion.div
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="bg-black/80 p-8 rounded-lg border-2 border-[#ff7700] w-96"
-            >
-              <h2 className="text-2xl font-bold text-center mb-6 text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] to-[#96fff2]">
-                Enter Your Battle Name
-              </h2>
-              <form onSubmit={handleNameSubmit} className="space-y-6">
-                <input
-                  type="text"
-                  value={playerName}
-                  onChange={(e) => setPlayerName(e.target.value)}
-                  className="name-input w-full px-4 py-3 rounded-lg text-lg font-mono"
-                  placeholder="Type your name..."
-                  autoFocus
-                  maxLength={20}
-                />
-                <button
-                  type="submit"
-                  className="submit-button w-full py-3 rounded-lg text-lg font-bold uppercase tracking-wider"
-                  disabled={!playerName.trim()}
-                >
-                  Enter Arena
-                </button>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-
         {!showTransition && (
           <motion.div
             initial={{ opacity: 1 }}
@@ -406,66 +364,48 @@ export default function Matchmaking() {
             ))}
 
             {!joined ? (
-              
               <motion.div className="absolute inset-0 flex flex-col items-center justify-center text-center font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-[#ff7700] to-[#ff7700] z-20">
-              <div className="absolute top-[46%] left-[-3.5%] w-full z-40">
-            <img
-              src="/logo1.png"
-              alt="Coding Battle Royale Logo"
-              className="w-[32%] h-[32%] object-contain animate-pulse z-40"
-              // style={{ transform: "scaleX(-1)" }}
-            />
-          </div>
-          <div className="absolute top-[46%] left-[71.5%] w-full z-40">
-            <img
-              src="/logo1.png"
-              alt="Coding Battle Royale Logo"
-              className="w-[32%] h-[32%] object-contain animate-pulse z-40"
-              style={{ transform: "scaleX(-1)" }}
-            />
-          </div>
-              <motion.h1
-                className="text-[4vw] max-w-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-silver to-[#ff7700] mb-0"
-              >
-                Decrypting Lobby Access...
-              </motion.h1>
-            
-              <motion.p className="text-lg text-[#96fff2] mb-12 font-mono">
-                Top warriers assemble here. Click to unlock your arena.
-              </motion.p>
-            
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                className="w-32 h-32 bg-black/80 neon-border text-white text-lg font-bold uppercase tracking-widest transition-all duration-200 cursor-pointer rounded-full flex items-center justify-center z-50"
-                onClick={() => {
-                  handleButtonClick();
-                  handleJoinBattle();
-                }}
-                onMouseEnter={handleButtonHover}
-              >
-                Join Battle
-              </motion.button>
-            </motion.div>
-            
+                <div className="absolute top-[46%] left-[-3.5%] w-full z-40">
+                  <img
+                    src="/logo1.png"
+                    alt="Coding Battle Royale Logo"
+                    className="w-[32%] h-[32%] object-contain animate-pulse z-40"
+                    // style={{ transform: "scaleX(-1)" }}
+                  />
+                </div>
+                <div className="absolute top-[46%] left-[71.5%] w-full z-40">
+                  <img
+                    src="/logo1.png"
+                    alt="Coding Battle Royale Logo"
+                    className="w-[32%] h-[32%] object-contain animate-pulse z-40"
+                    style={{ transform: "scaleX(-1)" }}
+                  />
+                </div>
+                <motion.h1
+                  className="text-[4vw] max-w-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-silver to-[#ff7700] mb-0"
+                >
+                  Decrypting Lobby Access...
+                </motion.h1>
+                <motion.p className="text-lg text-[#96fff2] mb-12 font-mono">
+                  Top warriors assemble here. Click to unlock your arena.
+                </motion.p>
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  className="w-32 h-32 bg-black/80 neon-border text-white text-lg font-bold uppercase tracking-widest transition-all duration-200 cursor-pointer rounded-full flex items-center justify-center z-50"
+                  onClick={() => {
+                    handleButtonClick();
+                    handleJoinBattle();
+                  }}
+                  onMouseEnter={handleButtonHover}
+                >
+                  Join Battle
+                </motion.button>
+              </motion.div>
             ) : (
               <>
                 {joined && (
                   <>
-                    {/* <motion.div 
-                      initial={{ opacity: 0, y: -20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.5 }}
-                      className="absolute top-[5%] w-full text-center"
-                    >
-                      <h1 className="text-[3vw] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-silver to-[#ff7700]">
-                        Welcome to the Arena
-                      </h1>
-                      <p className="text-[1.2vw] text-[#96fff2] mt-2 font-mono">
-                        Prepare for the ultimate coding showdown
-                      </p>
-                    </motion.div> */}
-
                     <motion.div 
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
