@@ -91,20 +91,42 @@ export default function Matchmaking() {
   }, [navigate]);
 
   const handleJoinBattle = () => {
-    setShowNameInput(true);
+    const storedName = localStorage.getItem(`playerName_${socketId}`);
+    let nameToUse = storedName;
+
+    if (!nameToUse) {
+      // If no stored name, use a default or part of socketId if available
+      if (socketId) {
+        nameToUse = `Player_${socketId.substring(0, 6)}`;
+      } else {
+        nameToUse = "Anonymous"; // Fallback if socketId is also null
+        console.log("Socket not connected yet, using default name.");
+        // Optionally, you might want to disable the button until connected
+        // or show a message to the user.
+      }
+    }
+
+    console.log("Joining battle with name:", nameToUse);
+    setPlayerName(nameToUse);
+    // localStorage.setItem(`playerName_${socketId}`, nameToUse.trim()); // Optionally save generated name?
+    socket.emit("join_battle", nameToUse);
+    setJoined(true);
+    setShowNameInput(false); // Ensure this is false
+    setIsNewUser(false);
   };
 
   const handleNameSubmit = (e) => {
-    e.preventDefault();
-    if (playerName.trim() && socketId) {
-      console.log("Joining battle with name:", playerName);
-      localStorage.setItem(`playerName_${socketId}`, playerName.trim());
-      setPlayerName(playerName.trim());
-      socket.emit("join_battle", playerName.trim());
-      setJoined(true);
-      setShowNameInput(false);
-      setIsNewUser(false);
-    }
+    // This function is no longer needed if name input is removed
+    // e.preventDefault();
+    // if (playerName.trim() && socketId) {
+    //   console.log("Joining battle with name:", playerName);
+    //   localStorage.setItem(`playerName_${socketId}`, playerName.trim());
+    //   setPlayerName(playerName.trim());
+    //   socket.emit("join_battle", playerName.trim());
+    //   setJoined(true);
+    //   setShowNameInput(false);
+    //   setIsNewUser(false);
+    // }
   };
 
   // const handleStartRoomGame = () => {
@@ -618,87 +640,6 @@ export default function Matchmaking() {
               />
             </div>
           </div>
-        )}
-
-        {showNameInput && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="fixed inset-0 name-input-overlay z-50 flex items-center justify-center"
-          >
-            <motion.div
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="bg-black/80 p-8 rounded-lg border-2 border-[#ff7700] w-[500px]"
-            >
-              <h2 className="text-2xl font-bold text-center mb-6 text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] to-[#96fff2]">
-                Welcome to Coding Battle Royale
-              </h2>
-              <form onSubmit={handleNameSubmit} className="space-y-6">
-                <div className="space-y-4">
-                  <div className="flex justify-center mb-6">
-                    <div className="relative">
-                      <div className="w-32 h-32 rounded-full bg-gradient-to-br from-[#ff7700] to-[#96fff2] p-[2px] group cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-[0_0_15px_rgba(255,119,0,0.5)]">
-                        <div className="w-full h-full rounded-full bg-black flex items-center justify-center relative overflow-hidden">
-                          <div className="absolute inset-0 bg-gradient-to-r from-[#ff7700] to-[#96fff2] opacity-0 group-hover:opacity-20 transition-opacity duration-300" />
-                          {socketId && localStorage.getItem(`profilePicture_${socketId}`) ? (
-                            <img 
-                              src={localStorage.getItem(`profilePicture_${socketId}`)} 
-                              alt="Profile" 
-                              className="w-full h-full object-cover rounded-full"
-                            />
-                          ) : (
-                            <svg 
-                              xmlns="http://www.w3.org/2000/svg" 
-                              className="h-16 w-16 text-[#ff7700] transition-transform duration-300 group-hover:scale-110 group-hover:text-[#96fff2]" 
-                              fill="none" 
-                              viewBox="0 0 24 24" 
-                              stroke="currentColor"
-                            >
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                            </svg>
-                          )}
-                        </div>
-                      </div>
-                      <label className="absolute bottom-0 right-0 bg-[#ff7700] text-black rounded-full p-1.5 hover:bg-[#96fff2] transition-colors duration-300 cursor-pointer">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handlePictureChange}
-                          className="hidden"
-                        />
-                      </label>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[#96fff2] text-sm font-bold mb-2">
-                      Choose Your Battle Name
-                    </label>
-                    <input
-                      type="text"
-                      value={playerName}
-                      onChange={(e) => setPlayerName(e.target.value)}
-                      className="name-input w-full px-4 py-3 rounded-lg text-lg font-mono"
-                      placeholder="Enter your battle name..."
-                      autoFocus
-                      maxLength={20}
-                    />
-                  </div>
-                </div>
-                <button
-                  type="submit"
-                  className="submit-button w-full py-3 rounded-lg text-lg font-bold uppercase tracking-wider"
-                  disabled={!playerName.trim()}
-                >
-                  Enter Arena
-                </button>
-              </form>
-            </motion.div>
-          </motion.div>
         )}
 
         {!showTransition && (
