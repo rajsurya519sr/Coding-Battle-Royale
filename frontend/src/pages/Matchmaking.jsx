@@ -148,12 +148,10 @@ export default function Matchmaking() {
 
   // Add hover sound effect to buttons
   const handleButtonHover = () => {
-    // playSound(SOUNDS.HOVER, 0.3);
   };
 
   // Add click sound effect to buttons
   const handleButtonClick = () => {
-    // playSound(SOUNDS.CLICK);
   };
 
   const handleProfileClick = () => {

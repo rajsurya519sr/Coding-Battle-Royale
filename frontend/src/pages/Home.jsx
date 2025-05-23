@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState, useRef } from "react";
+import { registerUser, loginUser } from "../services/api";
 
 export default function ExtendedPage() {
   const navigate = useNavigate();
@@ -16,6 +17,13 @@ export default function ExtendedPage() {
   const [login, setLoginVisible] = useState(false);
   const [showNameInput, setShowNameInput] = useState(false);
   const [playerName, setPlayerName] = useState("");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [signupEmail, setSignupEmail] = useState("");
+  const [signupPassword, setSignupPassword] = useState("");
+  const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
+  const [signupError, setSignupError] = useState("");
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -83,16 +91,54 @@ export default function ExtendedPage() {
     setSignupVisible(true);
   };
 
-  const handleNavigateToMatchmaking = () => {
-    navigate('/matchmaking');
+  const handleNavigateToMatchmaking = async () => {
+    // Validate login details before navigating
+    if (!loginEmail.trim()) {
+      setLoginError("Please enter your email");
+      return;
+    }
+    
+    if (!loginPassword.trim()) {
+      setLoginError("Please enter your password");
+      return;
+    }
+    
+    try {
+      setLoginError("");
+      // Attempt to login with credentials
+      const credentials = { email: loginEmail, password: loginPassword };
+      const userData = await loginUser(credentials);
+      
+      // If login is successful, navigate to matchmaking
+      navigate('/matchmaking');
+    } catch (error) {
+      // Show error message if login fails
+      setLoginError(error.message || "Invalid email or password");
+    }
   };
 
-  const handleNameSubmit = (e) => {
+  const handleNameSubmit = async (e) => {
     e.preventDefault();
     if (playerName.trim()) {
-      localStorage.setItem('playerName', playerName);
-      setShowNameInput(false);
-      navigate('/matchmaking');
+      try {
+        // Register the user with the provided details
+        const userData = {
+          name: playerName,
+          email: signupEmail,
+          password: signupPassword
+        };
+        
+        // Register user in the database
+        await registerUser(userData);
+        
+        // Close the signup form and navigate to matchmaking
+        setShowNameInput(false);
+        setSignupVisible(false);
+        navigate('/matchmaking');
+      } catch (error) {
+        setSignupError(error.message || "Registration failed. Please try again.");
+        setShowNameInput(false); // Go back to the signup form to show the error
+      }
     }
   };
 
@@ -433,9 +479,8 @@ export default function ExtendedPage() {
               transition={{ delay: 0.5, duration: 1 }}
                 type="text"
                 placeholder="Enter your email/mobile number"
-                // value={email}
-                // onChange={(e) => setEmail(e.target.value)}
-                // onBlur={() => handleBlur("email")}
+                value={signupEmail}
+                onChange={(e) => setSignupEmail(e.target.value)}
                 className="absolute w-full max-w-md top-[33.5%] left-[13%] px-4 py-3 text-lg text-white bg-black border-2 border-[#96fff2] rounded-lg outline-none focus:ring-2 focus:ring-[#96fff2] cyan-300 focus:border-[#96fff2] placeholder-gray-400 transition-all  focus:shadow-[0_0_20px_rgba(0,255,255,1)]"
               />
               
@@ -451,8 +496,10 @@ export default function ExtendedPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5, duration: 1 }}
-                type="text"
+                type="password"
                 placeholder="Create your password"
+                value={signupPassword}
+                onChange={(e) => setSignupPassword(e.target.value)}
                 className="absolute w-full max-w-md top-[48.5%] left-[13%] px-4 py-3 text-lg text-white bg-black border-2 border-[#96fff2] rounded-lg outline-none focus:ring-2 focus:ring-[#96fff2] cyan-300 focus:border-[#96fff2] placeholder-gray-400 transition-all  focus:shadow-[0_0_20px_rgba(0,255,255,1)]"
               />
 
@@ -467,17 +514,55 @@ export default function ExtendedPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5, duration: 1 }}
-                type="text"
+                type="password"
                 placeholder="Confirm password"
+                value={signupConfirmPassword}
+                onChange={(e) => setSignupConfirmPassword(e.target.value)}
                 className="absolute w-full max-w-md top-[63.5%] left-[13%] px-4 py-3 text-lg text-white bg-black border-2 border-[#96fff2] rounded-lg outline-none focus:ring-2 focus:ring-[#96fff2] focus:border-[#96fff2] placeholder-gray-400 transition-all  focus:shadow-[0_0_20px_rgba(0,255,255,1)]"
               />
+              
+              {/* Error message for signup */}
+              {signupError && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5, duration: 1 }}
+                  className="absolute top-[72%] left-[13%] text-red-500 text-lg"
+                >
+                  {signupError}
+                </motion.div>
+              )}
 
               {/* Register section Enter the Battlefield button */}
               <motion.button
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5, duration: 1 }}
-              onClick={() => setShowNameInput(true)}
+              onClick={async () => {
+                // Validate signup details before proceeding
+                if (!signupEmail.trim()) {
+                  setSignupError("Please enter your email");
+                  return;
+                }
+                
+                if (!signupPassword.trim()) {
+                  setSignupError("Please create a password");
+                  return;
+                }
+                
+                if (signupPassword !== signupConfirmPassword) {
+                  setSignupError("Passwords do not match");
+                  return;
+                }
+                
+                try {
+                  setSignupError("");
+                  // Proceed to name input screen after successful validation
+                  setShowNameInput(true);
+                } catch (error) {
+                  setSignupError(error.message || "Registration failed. Please try again.");
+                }
+              }}
               className="absolute px-8 py-4 top-[79%] left-[22.5%] bg-black/50 text-[#ff7700] neon-border-sl rounded-lg transition-all duration-200 cursor-pointer hover:scale-105 text-lg uppercase tracking-wider">
                 Enter the Battlefield
               </motion.button>
@@ -608,6 +693,8 @@ export default function ExtendedPage() {
           transition={{ delay: 0.5, duration: 1 }}
             type="text"
             placeholder="Enter your email/mobile number"
+            value={loginEmail}
+            onChange={(e) => setLoginEmail(e.target.value)}
             className="absolute w-full max-w-md top-[37.5%] left-[13%] px-4 py-3 text-lg text-white bg-black border-2 border-[#96fff2] rounded-lg outline-none focus:ring-2 focus:ring-[#96fff2] focus:border-[#96fff2] placeholder-gray-400 transition-all  focus:shadow-[0_0_20px_rgba(0,255,255,1)]"
           />
 
@@ -622,10 +709,24 @@ export default function ExtendedPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 1 }}
-            type="text"
+            type="password"
             placeholder="Enter your password"
+            value={loginPassword}
+            onChange={(e) => setLoginPassword(e.target.value)}
             className="absolute w-full max-w-md top-[55.5%] left-[13%] px-4 py-3 text-lg text-white bg-black border-2 border-[#96fff2] rounded-lg outline-none focus:ring-2 focus:ring-[#96fff2] cyan-300 focus:border-[#96fff2] placeholder-gray-400 transition-all  focus:shadow-[0_0_20px_rgba(0,255,255,1)]"
           />
+
+          {/* Error message for login */}
+          {loginError && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5, duration: 1 }}
+              className="absolute top-[67%] left-[13%] text-red-500 text-lg"
+            >
+              {loginError}
+            </motion.div>
+          )}
 
           {/* Login section Enter the Battlefield button */}
           <motion.button
@@ -634,7 +735,7 @@ export default function ExtendedPage() {
           transition={{ delay: 0.5, duration: 1 }}
           onClick={() => {
             handleNavigateToMatchmaking();
-            setLoginVisible(false);
+            if (!loginError) setLoginVisible(false);
           }}
           className="absolute px-8 py-4 top-[73%] left-[22.5%] bg-black/50 text-[#ff7700] neon-border-sl rounded-lg transition-all duration-200 cursor-pointer hover:scale-105 text-lg uppercase tracking-wider">
             Enter the Battlefield

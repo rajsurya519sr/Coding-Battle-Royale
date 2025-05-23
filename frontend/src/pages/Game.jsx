@@ -224,9 +224,6 @@ export default function Game() {
       if (!isDeleting) {
         setDisplayText(fullText.slice(0, index + 1));
         setIndex((prevIndex) => prevIndex + 1);
-        if (index < fullText.length) {
-          // playSound(SOUNDS.TYPING, 0.1);
-        }
         if (index === fullText.length) {
           setTimeout(() => setIsDeleting(true), 1000);
         }
@@ -239,7 +236,7 @@ export default function Game() {
       }
     }, 100);
     return () => clearInterval(interval);
-  }, [index, isDeleting]);
+  }, [index, isDeleting, fullText]);
 
   // Handle scroll boundaries and horizontal navigation
   useEffect(() => {
@@ -347,12 +344,10 @@ export default function Game() {
 
   // Add hover sound effect to buttons
   const handleButtonHover = () => {
-    // playSound(SOUNDS.HOVER, 0.3);
   };
 
   // Add click sound effect to buttons
   const handleButtonClick = () => {
-    // playSound(SOUNDS.CLICK);
   };
 
   const transitionOverlay = showTransition && (
