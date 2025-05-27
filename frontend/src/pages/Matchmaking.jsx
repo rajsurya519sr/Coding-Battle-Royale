@@ -2,10 +2,12 @@ import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import socket from "../lib/socket";  // Import the shared socket instance
+import { loginUser } from "../services/api"; // Import API services
 
 export default function Matchmaking() {
   const navigate = useNavigate();
-  const [lobbyCode, setLobbyCode] = useState("");
+  // Initialize with a default lobby code
+  const [lobbyCode, setLobbyCode] = useState(Math.floor(100000 + Math.random() * 900000).toString());
   const [players, setPlayers] = useState([]);
   const [countdown, setCountdown] = useState(null);
   const [joined, setJoined] = useState(false);
@@ -26,7 +28,9 @@ export default function Matchmaking() {
   const [isFirstVisit, setIsFirstVisit] = useState(true);
   const [socketId, setSocketId] = useState(null);
   const [isNewUser, setIsNewUser] = useState(true);
+  const [user, setUser] = useState(null);  // Add state for authenticated user
 
+  // Text animation effect
   useEffect(() => {
     const interval = setInterval(() => {
       if (!isDeleting) {
@@ -45,30 +49,166 @@ export default function Matchmaking() {
     }, 100);
     return () => clearInterval(interval);
   }, [index, isDeleting]);
+  
+  // No longer needed - removing copy functionality
 
+  // Load authenticated user data from localStorage on component mount - only once
+  useEffect(() => {
+    const userData = localStorage.getItem('user');
+    if (userData) {
+      try {
+        const parsedUser = JSON.parse(userData);
+        console.log("FULL USER DATA FROM LOCALSTORAGE:", parsedUser);
+        
+        // Make sure we have the complete user object
+        setUser(parsedUser);
+        
+        if (parsedUser.name) {
+          setPlayerName(parsedUser.name);
+          console.log("Loaded user name from localStorage:", parsedUser.name);
+          
+          // Force update the player name in localStorage to ensure consistency
+          localStorage.setItem(`playerName_${socket.id}`, parsedUser.name);
+        }
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+      }
+    } else {
+      console.log("No user data found in localStorage");
+      
+      // Try to fetch user data from the server if available
+      const token = localStorage.getItem('token');
+      if (token) {
+        console.log("Found token, attempting to fetch user data");
+        // You would typically have an API call here to fetch user data
+      }
+    }
+  }, []);
+
+  // Socket connection and event handling - with debounce to prevent flickering
   useEffect(() => {
     // Initialize socket connection
     socketRef.current = socket;
+    let joinTimeout = null;
 
-    socket.on("connect", () => {
+    const handleConnect = () => {
       console.log("Socket connected in Matchmaking:", socket.id);
       setSocketId(socket.id);
-      const storedName = localStorage.getItem(`playerName_${socket.id}`);
-      if (storedName) {
-        console.log("Reconnecting with stored name:", storedName);
-        setPlayerName(storedName);
-        socket.emit('join_battle', storedName);
-        setJoined(true);
-        setIsNewUser(false);
-      }
-    });
+      
+      // Clear any pending timeouts to prevent multiple joins
+      if (joinTimeout) clearTimeout(joinTimeout);
+      
+      // Delay joining to ensure we have the latest state
+      joinTimeout = setTimeout(() => {
+        // Get the name to use - either from authenticated user or localStorage
+        let nameToUse = "";
+        
+        if (user && user.name) {
+          nameToUse = user.name;
+          console.log("Using authenticated user name:", nameToUse);
+        } else {
+          const storedName = localStorage.getItem(`playerName_${socket.id}`);
+          if (storedName) {
+            nameToUse = storedName;
+            console.log("Using stored name:", nameToUse);
+          } else {
+            // Generate a default name if nothing else is available
+            nameToUse = `Player_${socket.id.substring(0, 6)}`;
+            console.log("Using generated name:", nameToUse);
+          }
+        }
+        
+        // Only join if we have a name and aren't already joined
+        if (nameToUse && !joined) {
+          setPlayerName(nameToUse);
+          console.log("Emitting join_battle with name:", nameToUse);
+          // Request to join an existing lobby with available space or create a new one if needed
+          socket.emit('join_battle', { name: nameToUse, joinExisting: true });
+          setJoined(true);
+          setIsNewUser(false);
+        }
+      }, 300); // Short delay to ensure state is settled
+    };
+    
+    // Add connect handler if socket is already connected
+    if (socket.connected) {
+      handleConnect();
+    }
+    
+    // Add event listener for future connections
+    socket.on("connect", handleConnect);
 
-    // Socket event listeners
-    socket.on("lobby_info", ({ lobbyCode, players }) => {
+    // Socket event listeners with debounce to prevent flickering
+    let lobbyInfoTimeout = null;
+    
+    const handleLobbyInfo = ({ lobbyCode, players }) => {
       console.log("Matchmaking received lobby info:", { lobbyCode, players });
-      setLobbyCode(lobbyCode);
-      setPlayers(players);
-    });
+      
+      // Clear any pending timeouts to prevent multiple updates
+      if (lobbyInfoTimeout) clearTimeout(lobbyInfoTimeout);
+      
+      // Delay updating to prevent flickering
+      lobbyInfoTimeout = setTimeout(() => {
+        // Always use the lobby code from the server
+        if (lobbyCode) {
+          console.log("Setting lobby code to:", lobbyCode);
+          setLobbyCode(lobbyCode);
+        }
+        
+        if (Array.isArray(players) && players.length > 0) {
+          try {
+            // Log the raw player data we received
+            console.log("Raw player data from server:", players);
+            
+            // Add isAuthenticated flag based on name format
+            const enhancedPlayers = players.map(player => {
+              if (!player || typeof player !== 'object') {
+                console.error('Invalid player object:', player);
+                return null;
+              }
+              
+              // Make sure we're using the correct name from the database
+              // The server should already be providing the correct name
+              const playerName = player.name || `Player_${player.id.substring(0, 6)}`;
+              
+              return {
+                ...player,
+                name: playerName,
+                // Consider a player authenticated if their name doesn't start with "Player_"
+                isAuthenticated: playerName && !playerName.startsWith('Player_')
+              };
+            }).filter(Boolean); // Remove any null entries
+            
+            // Sort players to ensure consistent order and highlight current player
+            const sortedPlayers = [...enhancedPlayers].sort((a, b) => {
+              // Current player always first
+              if (a.id === socketId) return -1;
+              if (b.id === socketId) return 1;
+              // Then authenticated players
+              if (a.isAuthenticated && !b.isAuthenticated) return -1;
+              if (!a.isAuthenticated && b.isAuthenticated) return 1;
+              // Then alphabetically by name
+              return a.name.localeCompare(b.name);
+            });
+            
+            console.log("Setting players to:", sortedPlayers);
+            setPlayers(sortedPlayers);
+            
+            // Start countdown if at least 4 players have joined
+            if (sortedPlayers.length >= 4 && !countdown) {
+              console.log("Starting countdown with", sortedPlayers.length, "players");
+              socket.emit('start_countdown');
+            }
+          } catch (error) {
+            console.error("Error processing players data:", error);
+          }
+        } else {
+          console.error("Received invalid players data:", players);
+        }
+      }, 300); // Short delay to prevent flickering
+    };
+    
+    socket.on("lobby_info", handleLobbyInfo);
     
     socket.on("countdown", (time) => {
       setCountdown(time);
@@ -83,35 +223,122 @@ export default function Matchmaking() {
 
     // Cleanup on unmount
     return () => {
-      socket.off("connect");
-      socket.off("lobby_info");
+      // Clear any pending timeouts
+      if (joinTimeout) clearTimeout(joinTimeout);
+      if (lobbyInfoTimeout) clearTimeout(lobbyInfoTimeout);
+      
+      // Remove event listeners
+      socket.off("connect", handleConnect);
+      socket.off("lobby_info", handleLobbyInfo);
       socket.off("countdown");
       socket.off("redirect");
     };
   }, [navigate]);
 
   const handleJoinBattle = () => {
-    const storedName = localStorage.getItem(`playerName_${socketId}`);
-    let nameToUse = storedName;
-
-    if (!nameToUse) {
-      // If no stored name, use a default or part of socketId if available
+    let nameToUse;
+    let isDbUser = false;
+    
+    // CRITICAL DEBUG: Log the current user object
+    console.log("CURRENT USER OBJECT:", user);
+    
+    // Priority 1: Use authenticated user's name from database
+    if (user && user.name) {
+      nameToUse = user.name;
+      isDbUser = true;
+      console.log("Using authenticated user name from database:", nameToUse);
+      
+      // Force update the player name in localStorage to ensure consistency
       if (socketId) {
-        nameToUse = `Player_${socketId.substring(0, 6)}`;
+        localStorage.setItem(`playerName_${socketId}`, nameToUse);
+      }
+    } else {
+      // Priority 2: Use stored name from localStorage if available
+      const storedName = localStorage.getItem(`playerName_${socketId}`);
+      if (storedName) {
+        nameToUse = storedName;
+        console.log("Using stored name:", nameToUse);
       } else {
-        nameToUse = "Anonymous"; // Fallback if socketId is also null
-        console.log("Socket not connected yet, using default name.");
-        // Optionally, you might want to disable the button until connected
-        // or show a message to the user.
+        // Priority 3: Generate a default name if no stored name
+        if (socketId) {
+          nameToUse = `Player_${socketId.substring(0, 6)}`;
+        } else {
+          nameToUse = "Anonymous"; // Fallback if socketId is also null
+          console.log("Socket not connected yet, using default name.");
+        }
       }
     }
+    
+    // Log the name we're using
+    console.log("Final name being used for join_battle:", nameToUse, "Is DB User:", isDbUser);
 
     console.log("Joining battle with name:", nameToUse);
+    
+    // Set player name immediately to avoid flickering
     setPlayerName(nameToUse);
-    // localStorage.setItem(`playerName_${socketId}`, nameToUse.trim()); // Optionally save generated name?
-    socket.emit("join_battle", nameToUse);
+    
+    // Always save the name to localStorage as a fallback
+    // This is only used if the user is not authenticated
+    if (!user || !user.name) {
+      localStorage.setItem(`playerName_${socketId}`, nameToUse.trim());
+    }
+    
+    // Immediately update the local players list to include ourselves
+    // This prevents flickering while waiting for server response
+    const selfPlayer = {
+      id: socketId,
+      name: nameToUse,
+      isAuthenticated: user && user.name ? true : false
+    };
+    
+    // Update players list with our own entry first
+    setPlayers(prevPlayers => {
+      // If we already have players, check if we're in the list
+      if (prevPlayers && prevPlayers.length > 0) {
+        const existingPlayerIndex = prevPlayers.findIndex(p => p.id === socketId);
+        if (existingPlayerIndex >= 0) {
+          // Update our entry
+          const updatedPlayers = [...prevPlayers];
+          updatedPlayers[existingPlayerIndex] = selfPlayer;
+          return updatedPlayers;
+        } else {
+          // Add ourselves to the list
+          return [...prevPlayers, selfPlayer];
+        }
+      } else {
+        // Start a new list with just ourselves
+        return [selfPlayer];
+      }
+    });
+    
+    // Now emit the join_battle event with the request to join an existing lobby if available
+    // Include authentication status to help server identify database users
+    const joinData = { 
+      name: nameToUse, 
+      joinExisting: true,
+      isAuthenticated: isDbUser,
+      isDbUser: isDbUser,  // Explicit flag for database users
+      userId: user?.id || null,
+      // Include the raw user object for debugging
+      _debug_user: user ? {
+        id: user.id,
+        name: user.name,
+        email: user.email
+      } : null
+    };
+    
+    console.log("Emitting join_battle with:", joinData);
+    socket.emit("join_battle", joinData);
+    
+    // Request updated player list after a short delay
+    setTimeout(() => {
+      console.log("Requesting updated player list");
+      socket.emit("get_players");
+    }, 1000);
+    
+    // Update state
     setJoined(true);
-    setShowNameInput(false); // Ensure this is false
+    setShowNameInput(false);
     setIsNewUser(false);
   };
 
@@ -744,42 +971,126 @@ export default function Matchmaking() {
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.5, delay: 0.2 }}
-                      className="absolute top-[5%] w-full text-center text-[3vw] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-[#ff7700] to-[#ff7700] z-20 space-x-8"
+                      className="absolute top-[5%] w-full text-center z-20"
                     >
-                      Lobby Code: <span className="text-[#ff7700]">{lobbyCode}</span>
+                      <div className="inline-flex items-center">
+                        <h2 className="text-[2vw] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#96fff2] to-[#96fff2] mr-4">
+                          Lobby Code:
+                        </h2>
+                        <span className="text-[2.5vw] font-mono font-bold text-[#ff7700] tracking-widest">
+                          {lobbyCode}
+                        </span>
+                      </div>
                     </motion.div>
 
                     <motion.div 
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.5, delay: 0.3 }}
-                      className="absolute top-[15%] w-full text-center text-[1.2vw] font-extrabold text-white"
+                      className="absolute top-[15%] w-full text-center text-[1.5vw] font-extrabold"
                     >
-                      Players Joined: {" "}
-                      <span className="text-white">{players.length} / 8</span>
+                      <div className="inline-flex items-center justify-center px-6 py-2 bg-[#ff7700]/30 backdrop-blur-md rounded-lg border border-[#ff7700]/50 shadow-lg">
+                        <span className="text-[#96fff2]">Players Joined: </span>
+                        <span className="ml-2 text-[#ff7700] font-mono bg-black/30 px-3 py-1 rounded-md">
+                          {/* Use a stable player count that doesn't flicker */}
+                          {joined ? (players && players.length > 0 ? players.length : '1'): '0'} <span className="text-white">/</span> 8
+                        </span>
+                        
+                        {/* Show countdown timer when at least 4 players have joined */}
+                        {players.length >= 4 && countdown !== null && (
+                          <div className="ml-6 flex items-center">
+                            <span className="text-[#96fff2] mr-2">Battle starts in:</span>
+                            <span className="text-[#ff7700] font-mono font-bold bg-black/50 px-4 py-1 rounded-md animate-pulse">
+                              {countdown}s
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </motion.div>
 
-                    <motion.ul 
+                    <motion.div 
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ duration: 0.5, delay: 0.4 }}
-                      className="absolute top-[25%]  transform -translate-x-1/2 grid grid-cols-2 gap-6 text-[1.2vw] text-[#96fff2] item-center"
+                      className="absolute top-[25%] w-full flex justify-center"
                     >
-                      {players.map((player) => (
-                        <motion.li
-                          key={player.id}
-                          className="signup-login-container bg-[#ff7700]/30 backdrop-blur-md px-3 py-3 rounded-lg"
-                        >
-                          {player.name}
-                        </motion.li>
-                      ))}
-                    </motion.ul>
-
-                    {countdown !== null && (
-                      <div className="absolute bottom-[2%] w-full text-center text-[3vw] font-bold text-yellow-400 animate-bounce">
-                        Game starts in: {countdown}s
+                      <div className="w-[60%] bg-black/40 backdrop-blur-md p-6 rounded-lg border border-[#ff7700]/30 shadow-lg">
+                        <h3 className="text-[1.3vw] font-bold text-[#ff7700] mb-4 text-center">Joined Players</h3>
+                        {/* Stabilize the player list to prevent flickering */}
+                        {!joined ? (
+                          <div className="text-center text-[#96fff2]/60 italic text-[1vw] py-4">
+                            Waiting for players to join...
+                          </div>
+                        ) : (!players || players.length === 0) ? (
+                          <ul className="grid grid-cols-2 gap-4 text-[1.2vw] text-[#96fff2]">
+                            <motion.li
+                              key="self"
+                              initial={{ opacity: 0, x: -20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ duration: 0.3 }}
+                              className="bg-[#ff7700]/20 backdrop-blur-md px-4 py-3 rounded-lg border-l-4 border-[#ff7700] flex items-center"
+                            >
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[#ff7700] to-[#96fff2] flex items-center justify-center mr-3">
+                                <span className="text-black font-bold text-sm">
+                                  {playerName && playerName.charAt(0).toUpperCase()}
+                                </span>
+                              </div>
+                              <span className="flex-1">{playerName || 'Player'}</span>
+                              <div className="flex items-center">
+                                <span className="ml-2 text-xs bg-[#ff7700]/40 px-2 py-1 rounded text-white">
+                                  (You)
+                                </span>
+                                {user && user.name && (
+                                  <span className="ml-2 text-xs bg-[#96fff2]/40 px-2 py-1 rounded text-white flex items-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                                      <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                    </svg>
+                                    Verified
+                                  </span>
+                                )}
+                              </div>
+                            </motion.li>
+                          </ul>
+                        ) : (
+                          <ul className="grid grid-cols-2 gap-4 text-[1.2vw] text-[#96fff2]">
+                            {players.map((player) => (
+                              <motion.li
+                                key={player.id || Math.random().toString()}
+                                // Remove initial animation to prevent flickering
+                                initial={{ opacity: 1, x: 0 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ duration: 0.3 }}
+                                className="bg-[#ff7700]/20 backdrop-blur-md px-4 py-3 rounded-lg border-l-4 border-[#ff7700] flex items-center"
+                              >
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[#ff7700] to-[#96fff2] flex items-center justify-center mr-3">
+                                  <span className="text-black font-bold text-sm">
+                                    {player.name && player.name.charAt(0).toUpperCase()}
+                                  </span>
+                                </div>
+                                <span className="flex-1">{player.name || 'Player'}</span>
+                                <div className="flex items-center">
+                                  {player.id === socketId && (
+                                    <span className="ml-2 text-xs bg-[#ff7700]/40 px-2 py-1 rounded text-white">
+                                      (You)
+                                    </span>
+                                  )}
+                                  {player.isAuthenticated && (
+                                    <span className="ml-2 text-xs bg-[#96fff2]/40 px-2 py-1 rounded text-white flex items-center">
+                                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                      </svg>
+                                      Verified
+                                    </span>
+                                  )}
+                                </div>
+                              </motion.li>
+                            ))}
+                          </ul>
+                        )}
                       </div>
-                    )}
+                    </motion.div>
+
+                    {/* Countdown timer at bottom removed as requested */}
 
                     <motion.div 
                       initial={{ opacity: 0, y: 50 }}

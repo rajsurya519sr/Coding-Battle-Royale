@@ -463,7 +463,7 @@ export default function Game() {
 
   return (
     <>
-      <style jsx="true">{`
+      <style jsx="true" global="true">{`
         @keyframes matrixRain {
           0% { transform: translateY(-100%); opacity: 0; }
           100% { transform: translateY(100vh); opacity: 1; }

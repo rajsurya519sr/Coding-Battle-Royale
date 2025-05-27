@@ -136,7 +136,7 @@ export default function BattleReport() {
 
   return (
     <>
-      <style jsx="true">{`
+      <style jsx="true" global="true">{`
         @keyframes gridAnimation {
           0% { transform: translateY(50px); opacity: 0.2; }
           50% { transform: translateY(10px); opacity: 1; }

@@ -13,6 +13,16 @@ app.use(cors({
   credentials: true
 }));
 
+// Add middleware for parsing JSON and URL-encoded data
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Import authentication routes
+const authRoutes = require('./src/routes/auth.routes');
+
+// Use authentication routes
+app.use('/api/auth', authRoutes);
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
@@ -22,10 +32,13 @@ const io = new Server(server, {
   }
 });
 
+// Global variables for lobby management
 const lobbies = {}; // { lobbyCode: { players: [], countdownStarted: false } }
 const playerLobbyMap = new Map(); // Keep track of which lobby each player is in
 const playerDataMap = new Map(); // Keep track of player data (name, points, etc.)
 const eliminatedPlayers = new Map(); // Keep track of eliminated players and their scores
+
+// Configuration constants
 const maxPlayers = 8;
 const minPlayersToStart = 4;
 
@@ -36,7 +49,73 @@ const POINTS_PER_LEVEL = {
   3: 300   // Level 3: Network Message Router
 };
 
-const generateLobbyCode = () => nanoid(6).toUpperCase();
+// IMPORTANT: We'll use a single active lobby for all players until it's full
+let activeLobbyCode = Math.floor(100000 + Math.random() * 900000).toString();
+lobbies[activeLobbyCode] = { players: [], countdownStarted: false };
+console.log(`Created initial active lobby: ${activeLobbyCode}`);
+
+// Generate a 6-digit numeric lobby code
+const generateLobbyCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+// Set up a periodic broadcast of lobby information to ensure all clients are in sync
+setInterval(() => {
+  // For each active lobby
+  Object.keys(lobbies).forEach(lobbyCode => {
+    const lobby = lobbies[lobbyCode];
+    if (lobby.players.length > 0) {
+      // Make sure all players have the latest data
+      const updatedPlayers = lobby.players.map(player => {
+        // Get the complete player data from our map
+        const playerData = playerDataMap.get(player.id);
+        
+        // Prioritize database name for authenticated users
+        let displayName = player.name;
+        
+        if (playerData) {
+          // If player is a database user, always use their database name
+          if (playerData.isDbUser && playerData.databaseName) {
+            displayName = playerData.databaseName;
+            console.log(`[Sync] Using database name for player ${player.id}: ${displayName}`);
+          } 
+          // If player is authenticated but not from database, use stored name
+          else if (playerData.isAuthenticated) {
+            displayName = playerData.name;
+            console.log(`[Sync] Using authenticated name for player ${player.id}: ${displayName}`);
+          }
+          // Otherwise use the stored name
+          else {
+            displayName = playerData.name;
+            console.log(`[Sync] Using regular name for player ${player.id}: ${displayName}`);
+          }
+          
+          // Debug: Log the raw player data
+          if (playerData._debug_user) {
+            console.log(`[Sync] Debug user data for ${player.id}:`, playerData._debug_user);
+          }
+        }
+        
+        return {
+          ...player,
+          name: displayName || player.name || 'Unknown Player',
+          isAuthenticated: playerData?.isAuthenticated || false,
+          userId: playerData?.userId || null
+        };
+      });
+      
+      // Update the lobby with the latest player data
+      lobbies[lobbyCode].players = updatedPlayers;
+      
+      // Broadcast to all players in the lobby
+      io.to(lobbyCode).emit("lobby_info", {
+        lobbyCode,
+        players: updatedPlayers
+      });
+      
+      console.log(`[Sync] Broadcasting lobby ${lobbyCode} with ${updatedPlayers.length} players:`,
+        updatedPlayers.map(p => `${p.name}${p.isAuthenticated ? ' (Authenticated)' : ''}`))
+    }
+  });
+}, 3000); // Update every 3 seconds
 
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
@@ -65,11 +144,56 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("join_battle", (name) => {
-    console.log("Player joining battle:", { name, socketId: socket.id });
+  socket.on("join_battle", (data) => {
+    // Handle both formats: string name or object with name and joinExisting
+    let playerName;
+    let joinExisting = true; // Default to joining existing lobbies
+    let isAuthenticated = false;
+    let isDbUser = false;
+    let userId = null;
+    let debugUser = null;
     
-    // Store player data
-    playerDataMap.set(socket.id, { name, points: 0 });
+    if (typeof data === 'object') {
+      playerName = data.name;
+      joinExisting = data.joinExisting !== false; // Default to true if not specified
+      isAuthenticated = !!data.isAuthenticated;
+      isDbUser = !!data.isDbUser;
+      userId = data.userId || null;
+      debugUser = data._debug_user || null;
+      
+      // Log the complete data object for debugging
+      console.log("COMPLETE JOIN DATA:", JSON.stringify(data, null, 2));
+    } else {
+      playerName = data; // Backward compatibility
+    }
+    
+    console.log("Player joining battle:", { 
+      name: playerName, 
+      socketId: socket.id, 
+      joinExisting,
+      isAuthenticated,
+      isDbUser,
+      userId,
+      hasDebugUser: !!debugUser
+    });
+    
+    // For database users, ensure we use their actual database name
+    const finalName = isDbUser && debugUser && debugUser.name ? debugUser.name : playerName;
+    
+    console.log("FINAL NAME BEING USED:", finalName, "(Database user: " + isDbUser + ")");
+    
+    // Store player data with authentication information
+    playerDataMap.set(socket.id, { 
+      name: finalName, 
+      points: 0,
+      isAuthenticated,
+      isDbUser,
+      userId,
+      // Store the original database name to ensure it's preserved
+      databaseName: isDbUser ? finalName : null,
+      // Store debug info
+      _debug_user: debugUser
+    });
     
     // Check if player is already in a lobby
     const existingLobbyCode = playerLobbyMap.get(socket.id);
@@ -81,7 +205,7 @@ io.on("connection", (socket) => {
         // Update existing player's data
         lobby.players[playerIndex] = {
           ...lobby.players[playerIndex],
-          name,
+          name: playerName,
           points: playerDataMap.get(socket.id)?.points || 0
         };
         
@@ -94,25 +218,35 @@ io.on("connection", (socket) => {
       }
     }
 
-    // Find or create a new lobby
-    let lobbyCode = Object.keys(lobbies).find(
-      (code) => lobbies[code].players.length < maxPlayers
-    );
-
-    if (!lobbyCode) {
-      lobbyCode = generateLobbyCode();
-      lobbies[lobbyCode] = { 
+    // Use the active lobby if it has space, otherwise create a new one
+    let lobbyCode = activeLobbyCode;
+    
+    // Check if active lobby is full
+    if (lobbies[activeLobbyCode].players.length >= maxPlayers) {
+      // Create a new active lobby
+      activeLobbyCode = generateLobbyCode();
+      lobbies[activeLobbyCode] = { 
         players: [], 
         countdownStarted: false
       };
-      console.log("Created new lobby:", lobbyCode);
+      lobbyCode = activeLobbyCode;
+      console.log("Active lobby full, created new lobby:", lobbyCode);
+    } else {
+      console.log("Joining existing active lobby:", lobbyCode);
     }
 
+    // Create player data with the correct name from database if available
     const playerData = {
       id: socket.id,
-      name,
-      points: playerDataMap.get(socket.id)?.points || 0
+      name: finalName, // Use the final name that prioritizes database name
+      points: playerDataMap.get(socket.id)?.points || 0,
+      isAuthenticated: isDbUser,
+      isDbUser: isDbUser,
+      userId: userId
     };
+    
+    console.log("Adding player to lobby with name:", playerData.name, 
+      "(Database user: " + isDbUser + ")");
     
     lobbies[lobbyCode].players.push(playerData);
     socket.join(lobbyCode);
@@ -121,16 +255,124 @@ io.on("connection", (socket) => {
 
     console.log("Updated lobby players:", lobbies[lobbyCode].players);
 
+    // Make sure all players have the latest data before broadcasting
+    const updatedPlayers = lobbies[lobbyCode].players.map(player => {
+      // Get the complete player data from our map
+      const playerData = playerDataMap.get(player.id);
+      
+      // Prioritize database name for authenticated users
+      let displayName = player.name;
+      
+      if (playerData) {
+        // If player is a database user, always use their database name
+        if (playerData.isDbUser && playerData.databaseName) {
+          displayName = playerData.databaseName;
+          console.log(`Using database name for player ${player.id}: ${displayName}`);
+        } 
+        // If player is authenticated but not from database, use stored name
+        else if (playerData.isAuthenticated) {
+          displayName = playerData.name;
+          console.log(`Using authenticated name for player ${player.id}: ${displayName}`);
+        }
+        // Otherwise use the stored name
+        else {
+          displayName = playerData.name;
+          console.log(`Using regular name for player ${player.id}: ${displayName}`);
+        }
+        
+        // Debug: Log the raw player data
+        if (playerData._debug_user) {
+          console.log(`Debug user data for ${player.id}:`, playerData._debug_user);
+        }
+      }
+      
+      return {
+        ...player,
+        name: displayName || player.name || 'Unknown Player',
+        isAuthenticated: playerData?.isAuthenticated || false,
+        isDbUser: playerData?.isDbUser || false,
+        userId: playerData?.userId || null
+      };
+    });
+    
+    // Update the lobby with the latest player data
+    lobbies[lobbyCode].players = updatedPlayers;
+    
+    // Broadcast to ALL players in the lobby
     io.to(lobbyCode).emit("lobby_info", {
       lobbyCode,
-      players: lobbies[lobbyCode].players
+      players: updatedPlayers
     });
-
-    // Start game if enough players
+    
+    // Log the updated player list with authentication status
+    console.log(`Broadcasting lobby ${lobbyCode} with ${updatedPlayers.length} players:`, 
+      updatedPlayers.map(p => `${p.name}${p.isAuthenticated ? ' (Authenticated)' : ''}`));
+    
+    // Check if we should start countdown (4+ players)
     if (
       lobbies[lobbyCode].players.length >= minPlayersToStart &&
       !lobbies[lobbyCode].countdownStarted
     ) {
+      console.log(`Auto-triggering countdown check for lobby ${lobbyCode} with ${lobbies[lobbyCode].players.length} players`);
+      // This will be handled by the start_countdown event handler
+    }
+  });
+
+  // Handle set_lobby_code event
+  socket.on("set_lobby_code", (lobbyCode) => {
+    const currentLobbyCode = playerLobbyMap.get(socket.id);
+    if (!currentLobbyCode || !lobbies[currentLobbyCode]) {
+      console.log("Player not in a lobby, cannot set lobby code");
+      return;
+    }
+    
+    // Generate a new 6-digit numeric code if needed
+    const newCode = typeof lobbyCode === 'string' && lobbyCode.length === 6 && /^\d+$/.test(lobbyCode)
+      ? lobbyCode
+      : Math.floor(100000 + Math.random() * 900000).toString();
+      
+    console.log(`Changing lobby code from ${currentLobbyCode} to ${newCode}`);
+    
+    // Create a new lobby with the same players
+    lobbies[newCode] = {
+      ...lobbies[currentLobbyCode],
+      players: [...lobbies[currentLobbyCode].players]
+    };
+    
+    // Update all players to the new lobby code
+    const players = lobbies[currentLobbyCode].players;
+    players.forEach(player => {
+      // Update the player's lobby map
+      playerLobbyMap.set(player.id, newCode);
+      
+      // Make the socket join the new room
+      const playerSocket = io.sockets.sockets.get(player.id);
+      if (playerSocket) {
+        playerSocket.leave(currentLobbyCode);
+        playerSocket.join(newCode);
+      }
+    });
+    
+    // Broadcast the new lobby info
+    io.to(newCode).emit("lobby_info", {
+      lobbyCode: newCode,
+      players: lobbies[newCode].players
+    });
+    
+    // Delete the old lobby
+    delete lobbies[currentLobbyCode];
+  });
+  
+  // Handle start_countdown event
+  socket.on("start_countdown", () => {
+    const lobbyCode = playerLobbyMap.get(socket.id);
+    if (!lobbyCode || !lobbies[lobbyCode]) {
+      console.log("Player not in a lobby, cannot start countdown");
+      return;
+    }
+    
+    if (lobbies[lobbyCode].players.length >= minPlayersToStart && !lobbies[lobbyCode].countdownStarted) {
+      console.log(`Starting countdown for lobby ${lobbyCode} with ${lobbies[lobbyCode].players.length} players`);
       lobbies[lobbyCode].countdownStarted = true;
       let timeLeft = 15;
       const interval = setInterval(() => {
@@ -141,9 +383,11 @@ io.on("connection", (socket) => {
           io.to(lobbyCode).emit("redirect", "/game");
         }
       }, 1000);
+    } else {
+      console.log(`Not starting countdown for lobby ${lobbyCode}: ${lobbies[lobbyCode].players.length} players, countdownStarted: ${lobbies[lobbyCode].countdownStarted}`);
     }
   });
-
+  
   // Handle code submissions
   socket.on("submit_code", ({ code, language, level }) => {
     if (!playerLobby || !lobbies[playerLobby]) return;
@@ -207,6 +451,6 @@ io.on("connection", (socket) => {
   });
 });
 
-server.listen(3000, () => {
-  console.log("Server listening on http://localhost:3000");
+server.listen(3001, () => {
+  console.log("Server listening on http://localhost:3001");
 });
