@@ -98,7 +98,7 @@ export default function Matchmaking() {
       // Clear any pending timeouts to prevent multiple joins
       if (joinTimeout) clearTimeout(joinTimeout);
       
-      // Delay joining to ensure we have the latest state
+      // Delay initialization to ensure we have the latest state
       joinTimeout = setTimeout(() => {
         // Get the name to use - either from authenticated user or localStorage
         let nameToUse = "";
@@ -118,14 +118,13 @@ export default function Matchmaking() {
           }
         }
         
-        // Only join if we have a name and aren't already joined
-        if (nameToUse && !joined) {
+        // Set the player name but don't automatically join
+        if (nameToUse) {
           setPlayerName(nameToUse);
-          console.log("Emitting join_battle with name:", nameToUse);
-          // Request to join an existing lobby with available space or create a new one if needed
-          socket.emit('join_battle', { name: nameToUse, joinExisting: true });
-          setJoined(true);
-          setIsNewUser(false);
+          console.log("Player name set to:", nameToUse);
+          // Don't automatically join - let the user initiate the join
+          setJoined(false);
+          setIsNewUser(true);
         }
       }, 300); // Short delay to ensure state is settled
     };
@@ -987,7 +986,7 @@ export default function Matchmaking() {
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.5, delay: 0.3 }}
-                      className="absolute top-[15%] w-full text-center text-[1.5vw] font-extrabold"
+                      className="absolute top-[13%] w-full text-center text-[1.5vw] font-extrabold"
                     >
                       <div className="inline-flex items-center justify-center px-6 py-2 bg-[#ff7700]/30 backdrop-blur-md rounded-lg border border-[#ff7700]/50 shadow-lg">
                         <span className="text-[#96fff2]">Players Joined: </span>
@@ -1015,7 +1014,7 @@ export default function Matchmaking() {
                       className="absolute top-[25%] w-full flex justify-center"
                     >
                       <div className="w-[60%] bg-black/40 backdrop-blur-md p-6 rounded-lg border border-[#ff7700]/30 shadow-lg">
-                        <h3 className="text-[1.3vw] font-bold text-[#ff7700] mb-4 text-center">Joined Players</h3>
+                        {/* <h3 className="text-[1.3vw] font-bold text-[#ff7700] mb-4 text-center">Joined Players</h3> */}
                         {/* Stabilize the player list to prevent flickering */}
                         {!joined ? (
                           <div className="text-center text-[#96fff2]/60 italic text-[1vw] py-4">
@@ -1096,10 +1095,10 @@ export default function Matchmaking() {
                       initial={{ opacity: 0, y: 50 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.5, delay: 0.6 }}
-                      className="absolute top-[70%]  transform -translate-x-1/2  flex flex-col items-center justify-center text-center"
+                      className="absolute top-[83%]  transform -translate-x-1/2  flex flex-col items-center justify-center text-center"
                     >
                       <div>
-                        <h2 className="text-[3.5vw] font-bold text-[#96fff2] mb-2">
+                        <h2 className="text-[3.5vw] font-bold text-[#96fff2] mb-0">
                         Connected. Locked In.
                         </h2>
                         <p className="text-[2vw] text-[#ff7700]">

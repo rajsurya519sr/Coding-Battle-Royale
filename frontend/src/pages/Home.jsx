@@ -109,7 +109,8 @@ export default function ExtendedPage() {
       const credentials = { email: loginEmail, password: loginPassword };
       const userData = await loginUser(credentials);
       
-      // If login is successful, navigate to matchmaking
+      // If login is successful, close the login modal and navigate to matchmaking
+      setLoginVisible(false);
       navigate('/matchmaking');
     } catch (error) {
       // Show error message if login fails
@@ -128,16 +129,16 @@ export default function ExtendedPage() {
           password: signupPassword
         };
         
-        // Register user in the database
-        await registerUser(userData);
+        // Register the user and get the response
+        const response = await registerUser(userData);
         
-        // Close the signup form and navigate to matchmaking
+        // If registration is successful, close all modals and navigate to matchmaking
         setShowNameInput(false);
         setSignupVisible(false);
         navigate('/matchmaking');
       } catch (error) {
-        setSignupError(error.message || "Registration failed. Please try again.");
-        setShowNameInput(false); // Go back to the signup form to show the error
+        console.error('Error registering user:', error);
+        setSignupError(error.message || 'Registration failed');
       }
     }
   };
