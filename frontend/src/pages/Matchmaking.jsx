@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import socket from "../lib/socket";  // Import the shared socket instance
-import { loginUser } from "../services/api"; // Import API services
+import { loginUser, getCurrentUser } from "../services/api"; // Import API services
 
 export default function Matchmaking() {
   const navigate = useNavigate();
@@ -52,38 +52,53 @@ export default function Matchmaking() {
   
   // No longer needed - removing copy functionality
 
-  // Load authenticated user data from localStorage on component mount - only once
+  // Load authenticated user data from localStorage and API on component mount
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
+    const loadUserData = async () => {
       try {
-        const parsedUser = JSON.parse(userData);
-        console.log("FULL USER DATA FROM LOCALSTORAGE:", parsedUser);
-        
-        // Make sure we have the complete user object
-        setUser(parsedUser);
-        
-        if (parsedUser.name) {
-          setPlayerName(parsedUser.name);
-          console.log("Loaded user name from localStorage:", parsedUser.name);
-          
-          // Force update the player name in localStorage to ensure consistency
-          localStorage.setItem(`playerName_${socket.id}`, parsedUser.name);
+        // Try to get fresh user data from the API if we have a token
+        const token = localStorage.getItem('token');
+        if (token) {
+          console.log("Found token, fetching current user data");
+          const userData = await getCurrentUser();
+          if (userData && userData.name) {
+            console.log("Got current user data from API:", userData);
+            setUser(userData);
+            setPlayerName(userData.name);
+            return; // Exit if we got user data from API
+          }
+        }
+
+        // If no token or API call failed, try localStorage
+        const storedUserData = localStorage.getItem('user');
+        if (storedUserData) {
+          const parsedUser = JSON.parse(storedUserData);
+          console.log("FULL USER DATA FROM LOCALSTORAGE:", parsedUser);
+          if (parsedUser && parsedUser.name) {
+            setUser(parsedUser);
+            setPlayerName(parsedUser.name);
+          }
         }
       } catch (error) {
-        console.error('Error parsing user data:', error);
+        console.error('Error loading user data:', error);
+        // Clear potentially corrupted data
+        localStorage.removeItem('user');
+        setUser(null);
       }
-    } else {
-      console.log("No user data found in localStorage");
-      
-      // Try to fetch user data from the server if available
-      const token = localStorage.getItem('token');
-      if (token) {
-        console.log("Found token, attempting to fetch user data");
-        // You would typically have an API call here to fetch user data
-      }
-    }
+    };
+
+    loadUserData();
   }, []);
+
+  // Debug effect to log user state changes
+  useEffect(() => {
+    console.log('Current user state:', user);
+    console.log('Current player name:', playerName);
+    if (user?.name && playerName !== user.name) {
+      console.log('Fixing player name mismatch...');
+      setPlayerName(user.name);
+    }
+  }, [user, playerName]);
 
   // Socket connection and event handling - with debounce to prevent flickering
   useEffect(() => {
@@ -99,30 +114,49 @@ export default function Matchmaking() {
       if (joinTimeout) clearTimeout(joinTimeout);
       
       // Delay initialization to ensure we have the latest state
-      joinTimeout = setTimeout(() => {
-        // Get the name to use - either from authenticated user or localStorage
-        let nameToUse = "";
-        
-        if (user && user.name) {
-          nameToUse = user.name;
-          console.log("Using authenticated user name:", nameToUse);
-        } else {
-          const storedName = localStorage.getItem(`playerName_${socket.id}`);
-          if (storedName) {
-            nameToUse = storedName;
-            console.log("Using stored name:", nameToUse);
-          } else {
-            // Generate a default name if nothing else is available
-            nameToUse = `Player_${socket.id.substring(0, 6)}`;
-            console.log("Using generated name:", nameToUse);
+      joinTimeout = setTimeout(async () => {
+        try {
+          // Try to get fresh user data from API first
+          const token = localStorage.getItem('token');
+          if (token) {
+            const userData = await getCurrentUser();
+            if (userData && userData.name) {
+              console.log("Using authenticated user name from API:", userData.name);
+              setUser(userData);
+              setPlayerName(userData.name);
+              setJoined(false);
+              setIsNewUser(false);
+              return;
+            }
           }
-        }
-        
-        // Set the player name but don't automatically join
-        if (nameToUse) {
-          setPlayerName(nameToUse);
-          console.log("Player name set to:", nameToUse);
-          // Don't automatically join - let the user initiate the join
+
+          // Fall back to localStorage if API fails
+          const storedUserData = localStorage.getItem('user');
+          if (storedUserData) {
+            const parsedUser = JSON.parse(storedUserData);
+            if (parsedUser && parsedUser.name) {
+              console.log("Using authenticated user name from storage:", parsedUser.name);
+              setUser(parsedUser);
+              setPlayerName(parsedUser.name);
+              setJoined(false);
+              setIsNewUser(false);
+              return;
+            }
+          }
+
+          // Only use generated name if no user data exists
+          const generatedName = `Player_${socket.id.substring(0, 6)}`;
+          console.log("Using generated name:", generatedName);
+          setPlayerName(generatedName);
+          setUser(null);
+          setJoined(false);
+          setIsNewUser(true);
+        } catch (error) {
+          console.error('Error in handleConnect:', error);
+          // Use generated name as fallback
+          const generatedName = `Player_${socket.id.substring(0, 6)}`;
+          setPlayerName(generatedName);
+          setUser(null);
           setJoined(false);
           setIsNewUser(true);
         }
@@ -880,16 +914,16 @@ export default function Matchmaking() {
             </div>
 
             {/* Cursor Trail Effect */}
-        {cursorTrail.map((particle) => (
-          <motion.div
-            key={particle.id}
-            className="cursor-trail"
-            style={{ left: particle.x, top: particle.y }}
-            initial={{ opacity: 1, scale: 1 }}
-            animate={{ opacity: 0, scale: 1.5 }}
-            transition={{ duration: 1 }}
-          />
-        ))}
+            {cursorTrail.map((particle) => (
+              <motion.div
+                key={particle.id}
+                className="cursor-trail"
+                style={{ left: particle.x, top: particle.y }}
+                initial={{ opacity: 1, scale: 1 }}
+                animate={{ opacity: 0, scale: 1.5 }}
+                transition={{ duration: 1 }}
+              />
+            ))}
 
             {Array.from({ length: 50 }).map((_, i) => (
               <motion.span
@@ -906,47 +940,161 @@ export default function Matchmaking() {
             ))}
 
             {!joined ? (
-              
               <motion.div className="absolute inset-0 flex flex-col items-center justify-center text-center font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-[#ff7700] to-[#ff7700] z-20">
-              <div className="absolute top-[46%] left-[-3.5%] w-full z-40">
-            <img
-              src="/logo1.png"
-              alt="Coding Battle Royale Logo"
-              className="w-[32%] h-[32%] object-contain animate-pulse z-40"
-              // style={{ transform: "scaleX(-1)" }}
-            />
-          </div>
-          <div className="absolute top-[46%] left-[71.5%] w-full z-40">
-            <img
-              src="/logo1.png"
-              alt="Coding Battle Royale Logo"
-              className="w-[32%] h-[32%] object-contain animate-pulse z-40"
-              style={{ transform: "scaleX(-1)" }}
-            />
-          </div>
-              <motion.h1
-                className="text-[4vw] max-w-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-silver to-[#ff7700] mb-0"
-              >
-                Decrypting Lobby Access...
-              </motion.h1>
-            
-              <motion.p className="text-lg text-[#96fff2] mb-12 font-mono">
-                Top warriers assemble here. Click to unlock your arena.
-              </motion.p>
-            
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                className="w-32 h-32 bg-black/80 neon-border text-white text-lg font-bold uppercase tracking-widest transition-all duration-200 cursor-pointer rounded-full flex items-center justify-center z-50"
-                onClick={() => {
-                  handleButtonClick();
-                  handleJoinBattle();
-                }}
-                onMouseEnter={handleButtonHover}
-              >
-                Join Battle
-              </motion.button>
-            </motion.div>
+                {/* Dev Card */}
+                <motion.div
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5 }}
+                  className="absolute top-[15%] right-[5%] flex items-center space-x-4 bg-black/40 backdrop-blur-md px-6 py-4 rounded-lg border border-[#ff7700]/30 shadow-lg z-50 cursor-pointer hover:border-[#ff7700]/50 transition-all duration-300"
+                  onClick={handleProfileClick}
+                >
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#ff7700] to-[#96fff2] p-[2px]">
+                    <div className="w-full h-full rounded-full bg-black flex items-center justify-center text-xl font-bold text-[#ff7700]">
+                      {playerName ? playerName[0].toUpperCase() : '?'}
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-[#96fff2] font-bold text-lg group relative">
+                      {playerName || (
+                        <span className="flex items-center gap-2">
+                          <span className="text-[#ff7700]/60">Not Logged In</span>
+                          <span className="text-xs text-[#96fff2]/40">(Login to show name)</span>
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-[#ff7700] text-sm flex items-center gap-2">
+                      <span>Coding Warrior</span>
+                      {user?.name && (
+                        <span className="inline-flex items-center px-2 py-1 bg-[#ff7700]/20 rounded-full text-xs">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Verified
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </motion.div>
+
+                {/* Profile Container */}
+                {showProfileCard && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60]"
+                    onClick={handleCloseProfileCard}
+                  >
+                    <motion.div
+                      initial={{ scale: 0.9, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.9, opacity: 0 }}
+                      className="bg-gradient-to-br from-[#1d0d00] to-black p-8 rounded-lg border border-[#ff7700]/30 w-[400px] relative"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="absolute top-4 right-4">
+                        <button
+                          onClick={handleCloseProfileCard}
+                          className="text-[#96fff2]/60 hover:text-[#96fff2] transition-colors duration-300"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+
+                       <div className="flex items-center space-x-4 mb-6">
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#ff7700] to-[#96fff2] p-[2px]">
+                          <div className="w-full h-full rounded-full bg-black flex items-center justify-center text-xl font-bold text-[#ff7700]">
+                            {playerName ? playerName[0].toUpperCase() : '?'}
+                          </div>
+                        </div>
+                        <div>
+                          <h3 className="text-[#96fff2] font-bold text-lg group relative">
+                            {playerName || (
+                              <span className="flex items-center gap-2">
+                                <span className="text-[#ff7700]/60">Not Logged In</span>
+                                <span className="text-xs text-[#96fff2]/40">(Login to show name)</span>
+                              </span>
+                            )}
+                          </h3>
+                          <p className="text-[#ff7700] text-sm flex items-center gap-2">
+                            <span>Coding Warrior</span>
+                            {user?.name && (
+                              <span className="inline-flex items-center px-2 py-1 bg-[#ff7700]/20 rounded-full text-xs">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                Verified
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-6">
+                        <div>
+                          <p className="text-[#96fff2]/60 text-sm mb-2">Experience Progress</p>
+                          <div className="relative h-2 bg-[#ff7700]/20 rounded-full overflow-hidden">
+                            <div className="absolute top-0 left-0 h-full w-[25%] bg-gradient-to-r from-[#ff7700] to-[#ff9955] rounded-full"></div>
+                          </div>
+                          <p className="text-[#ff7700] text-right text-sm mt-1">25%</p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-[#ff7700]/10 rounded-lg p-4 text-center">
+                            <p className="text-[#96fff2] text-2xl font-bold">0</p>
+                            <p className="text-[#96fff2]/60">Total Battles</p>
+                          </div>
+                          <div className="bg-[#ff7700]/10 rounded-lg p-4 text-center">
+                            <p className="text-[#96fff2] text-2xl font-bold">0</p>
+                            <p className="text-[#96fff2]/60">Victories</p>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
+
+                <div className="absolute top-[46%] left-[-3.5%] w-full z-40">
+                  <img
+                    src="/logo1.png"
+                    alt="Coding Battle Royale Logo"
+                    className="w-[32%] h-[32%] object-contain animate-pulse z-40"
+                  />
+                </div>
+                <div className="absolute top-[46%] left-[71.5%] w-full z-40">
+                  <img
+                    src="/logo1.png"
+                    alt="Coding Battle Royale Logo"
+                    className="w-[32%] h-[32%] object-contain animate-pulse z-40"
+                    style={{ transform: "scaleX(-1)" }}
+                  />
+                </div>
+                <motion.h1
+                  className="text-[4vw] max-w-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-silver to-[#ff7700] mb-0"
+                >
+                  Decrypting Lobby Access...
+                </motion.h1>
+              
+                <motion.p className="text-lg text-[#96fff2] mb-12 font-mono">
+                  Top warriers assemble here. Click to unlock your arena.
+                </motion.p>
+              
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  className="w-32 h-32 bg-black/80 neon-border text-white text-lg font-bold uppercase tracking-widest transition-all duration-200 cursor-pointer rounded-full flex items-center justify-center z-50"
+                  onClick={() => {
+                    handleButtonClick();
+                    handleJoinBattle();
+                  }}
+                  onMouseEnter={handleButtonHover}
+                >
+                  Join Battle
+                </motion.button>
+              </motion.div>
             
             ) : (
               <>
