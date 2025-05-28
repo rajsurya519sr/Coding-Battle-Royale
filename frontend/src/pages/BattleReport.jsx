@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import socket from "../lib/socket";
+import { getCurrentUser } from "../services/api";
 
 export default function BattleReport() {
   const navigate = useNavigate();
@@ -86,15 +87,72 @@ export default function BattleReport() {
     return () => clearInterval(interval);
   }, [index, isDeleting]);
 
+  // Debug effect to log player name changes
   useEffect(() => {
-    const socketId = socket.id;
-    if (socketId) {
-      const storedName = localStorage.getItem(`playerName_${socketId}`);
-      const storedPicture = localStorage.getItem(`profilePicture_${socketId}`);
-      if (storedName) setPlayerName(storedName);
-      if (storedPicture) setProfilePicture(storedPicture);
-    }
+    console.log('Current player name in BattleReport:', playerName);
+  }, [playerName]);
+
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        // Try to get fresh user data from the API if we have a token
+        const token = localStorage.getItem('token');
+        if (token) {
+          console.log("Found token, fetching current user data for BattleReport");
+          const userData = await getCurrentUser();
+          if (userData && userData.name) {
+            console.log("Got current user data from API:", userData);
+            setPlayerName(userData.name);
+            return;
+          }
+        }
+
+        // If no token or API call failed, try localStorage
+        const userData = localStorage.getItem('user');
+        if (userData) {
+          const parsedUser = JSON.parse(userData);
+          console.log("Using stored user data:", parsedUser);
+          if (parsedUser && parsedUser.name) {
+            setPlayerName(parsedUser.name);
+            return;
+          }
+        }
+
+        // If we still don't have a name, check socket storage as last resort
+        const socketId = socket.id;
+        if (socketId) {
+          const storedName = localStorage.getItem(`playerName_${socketId}`);
+          if (storedName) {
+            console.log("Using socket-based stored name:", storedName);
+            setPlayerName(storedName);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading user data:', error);
+      }
+    };
+
+    loadUserData();
+
+    // Also set up socket event listener for name updates
+    const handleNameUpdate = (name) => {
+      console.log("Received name update from socket:", name);
+      if (name) setPlayerName(name);
+    };
+
+    socket.on('nameUpdate', handleNameUpdate);
+
+    return () => {
+      socket.off('nameUpdate', handleNameUpdate);
+    };
   }, []);
+
+  // Sync with localStorage whenever playerName changes
+  useEffect(() => {
+    if (playerName && socket.id) {
+      localStorage.setItem(`playerName_${socket.id}`, playerName);
+    }
+  }, [playerName]);
 
   const handleSectionToggle = (section) => {
     if (activeSection === section) {
@@ -696,7 +754,7 @@ export default function BattleReport() {
                 <div>
                       <h1 className="text-4xl font-black mb-2 tracking-wider">
                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#ff7700] via-[#ffaa00] to-[#96fff2] relative inline-block">
-                    {playerName || "Anonymous"}
+                    {playerName || "Not Logged In"}
                           <span className="absolute -bottom-1 left-0 right-0 h-[2px] bg-gradient-to-r from-[#ff7700] via-[#ffaa00] to-[#96fff2] transform origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500"></span>
                         </span>
                   </h1>

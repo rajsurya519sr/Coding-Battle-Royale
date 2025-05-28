@@ -108,7 +108,7 @@ export default function Game() {
     if (storedName) {
       setPlayerName(storedName);
       // Re-join the battle with stored name
-      socket.emit('join_battle', storedName);
+      socket.emit('join_battle', { name: storedName, joinExisting: true });
     }
 
     // Request initial player data
@@ -118,21 +118,19 @@ export default function Game() {
       console.log("Socket connected in Game, ID:", socket.id);
       if (storedName) {
         console.log("Rejoining with stored name:", storedName);
-        socket.emit('join_battle', storedName);
+        socket.emit('join_battle', { name: storedName, joinExisting: true });
       }
     });
 
     socket.on("players", (data) => {
       console.log("Received players update in Game:", data);
       if (Array.isArray(data)) {
-        // Update player names if they're missing
-        const updatedPlayers = data.map(player => {
-          if (!player.name && player.id === socket.id) {
-            return { ...player, name: storedName || 'Unknown Player' };
-          }
-          return player;
-        });
-        console.log("Setting players with updated data:", updatedPlayers);
+        // Ensure each player has a unique name
+        const updatedPlayers = data.map(player => ({
+          ...player,
+          name: player.name || 'Unknown Player'
+        }));
+        console.log("Setting players with data:", updatedPlayers);
         setPlayers(updatedPlayers);
       } else {
         console.error("Received invalid players data:", data);
@@ -142,13 +140,11 @@ export default function Game() {
     socket.on("lobby_info", ({ lobbyCode, players }) => {
       console.log("Game received lobby info:", { lobbyCode, players });
       if (Array.isArray(players)) {
-        // Update player names if they're missing
-        const updatedPlayers = players.map(player => {
-          if (!player.name && player.id === socket.id) {
-            return { ...player, name: storedName || 'Unknown Player' };
-          }
-          return player;
-        });
+        // Ensure each player has a unique name
+        const updatedPlayers = players.map(player => ({
+          ...player,
+          name: player.name || 'Unknown Player'
+        }));
         console.log("Setting players from lobby info:", updatedPlayers);
         setPlayers(updatedPlayers);
       } else {
@@ -159,13 +155,11 @@ export default function Game() {
     socket.on("leaderboard_update", ({ players, submission }) => {
       console.log("Received leaderboard update:", { players, submission });
       if (Array.isArray(players)) {
-        // Update player names if they're missing
-        const updatedPlayers = players.map(player => {
-          if (!player.name && player.id === socket.id) {
-            return { ...player, name: storedName || 'Unknown Player' };
-          }
-          return player;
-        });
+        // Ensure each player has a unique name
+        const updatedPlayers = players.map(player => ({
+          ...player,
+          name: player.name || 'Unknown Player'
+        }));
         console.log("Setting players from leaderboard update:", updatedPlayers);
         setPlayers(updatedPlayers);
         if (submission) {

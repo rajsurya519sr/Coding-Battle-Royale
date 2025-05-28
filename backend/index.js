@@ -17,8 +17,14 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Import passport configuration
+const passport = require('./src/config/passport');
+
 // Import authentication routes
 const authRoutes = require('./src/routes/auth.routes');
+
+// Initialize Passport middleware
+app.use(passport.initialize());
 
 // Use authentication routes
 app.use('/api/auth', authRoutes);
@@ -125,16 +131,28 @@ io.on("connection", (socket) => {
     console.log("Get players request from:", socket.id);
     const lobbyCode = playerLobbyMap.get(socket.id);
     if (lobbyCode && lobbies[lobbyCode]) {
-      // Get all players in the lobby, including eliminated ones
-      const activePlayers = lobbies[lobbyCode].players;
-      const eliminatedLobbyPlayers = Array.from(eliminatedPlayers.values())
-        .filter(p => playerLobbyMap.get(p.id) === lobbyCode);
-      
-      const allPlayers = [...activePlayers, ...eliminatedLobbyPlayers]
-        .map(player => ({
+      const allPlayers = lobbies[lobbyCode].players.map(player => {
+        const playerData = playerDataMap.get(player.id);
+        let displayName = player.name;
+
+        if (playerData) {
+          // If player is a database user, use their database name
+          if (playerData.isDbUser && playerData.databaseName) {
+            displayName = playerData.databaseName;
+          } 
+          // If player is authenticated or has a stored name, use that
+          else if (playerData.name) {
+            displayName = playerData.name;
+          }
+        }
+
+        return {
           ...player,
-          name: playerDataMap.get(player.id)?.name || player.name || 'Unknown Player'
-        }));
+          name: displayName || player.name || 'Unknown Player',
+          points: playerData?.points || 0,
+          eliminated: eliminatedPlayers.has(player.id)
+        };
+      });
 
       console.log("Sending complete player data:", allPlayers);
       socket.emit("players", allPlayers);
@@ -182,19 +200,6 @@ io.on("connection", (socket) => {
     
     console.log("FINAL NAME BEING USED:", finalName, "(Database user: " + isDbUser + ")");
     
-    // Store player data with authentication information
-    playerDataMap.set(socket.id, { 
-      name: finalName, 
-      points: 0,
-      isAuthenticated,
-      isDbUser,
-      userId,
-      // Store the original database name to ensure it's preserved
-      databaseName: isDbUser ? finalName : null,
-      // Store debug info
-      _debug_user: debugUser
-    });
-    
     // Check if player is already in a lobby
     const existingLobbyCode = playerLobbyMap.get(socket.id);
     if (existingLobbyCode && lobbies[existingLobbyCode]) {
@@ -202,10 +207,10 @@ io.on("connection", (socket) => {
       const playerIndex = lobby.players.findIndex(p => p.id === socket.id);
       
       if (playerIndex !== -1) {
-        // Update existing player's data
+        // Update existing player's data but keep their unique name
+        const existingName = lobby.players[playerIndex].name;
         lobby.players[playerIndex] = {
           ...lobby.players[playerIndex],
-          name: playerName,
           points: playerDataMap.get(socket.id)?.points || 0
         };
         
@@ -236,16 +241,40 @@ io.on("connection", (socket) => {
     }
 
     // Create player data with the correct name from database if available
+    let uniqueName = finalName;
+    let nameCounter = 1;
+    
+    // Check if name already exists in the lobby
+    while (lobbies[lobbyCode].players.some(p => p.name === uniqueName)) {
+      uniqueName = `${finalName}${nameCounter}`;
+      nameCounter++;
+    }
+    
+    // Store player data with authentication information
+    playerDataMap.set(socket.id, { 
+      name: uniqueName, // Use the unique name
+      points: 0,
+      isAuthenticated,
+      isDbUser,
+      userId,
+      // Store the original database name to ensure it's preserved
+      databaseName: isDbUser ? finalName : null,
+      // Store debug info
+      _debug_user: debugUser,
+      // Store original name for reference
+      originalName: finalName
+    });
+    
     const playerData = {
       id: socket.id,
-      name: finalName, // Use the final name that prioritizes database name
+      name: uniqueName, // Use the unique name
       points: playerDataMap.get(socket.id)?.points || 0,
       isAuthenticated: isDbUser,
       isDbUser: isDbUser,
       userId: userId
     };
     
-    console.log("Adding player to lobby with name:", playerData.name, 
+    console.log("Adding player to lobby with unique name:", playerData.name, 
       "(Database user: " + isDbUser + ")");
     
     lobbies[lobbyCode].players.push(playerData);
