@@ -4,6 +4,95 @@ import { motion } from "framer-motion";
 import Editor from "@monaco-editor/react";
 import socket from "../lib/socket";  // Import the shared socket instance
 
+// Helper function to parse question markdown
+const parseQuestionMarkdown = (markdown, language) => {
+  const structuredQuestion = {
+    title: '',
+    description: '',
+    functionDesc: '',
+    constraints: [],
+    inputFormat: '',
+    outputFormat: '',
+    sampleInput: '',
+    sampleOutput: '',
+    explanation: '',
+    hints: [],
+    edgeCases: '',
+    summary: '',
+  };
+
+  // Remove leading '---' if present
+  if (markdown.startsWith('---\n\n')) {
+    markdown = markdown.substring(5); // Corrected: '---' (3) + '\n' (1) + '\n' (1) = 5 characters
+  }
+
+  // Helper to extract content by keywords
+  const extractContent = (text, keyword) => {
+    // Updated regex: Allow for optional colon after keyword,
+    // allow for any whitespace (including newlines) after keyword and before content,
+    // and be more flexible with termination (one or more newlines before next section header or --- or end of string).
+    const regex = new RegExp(`\\*\\*${keyword}:?\\*\\*\\s*([\\s\\S]*?)(?=\\n+\\*\\*|\\n+---|$)`, 'i');
+    const result = text.match(regex);
+    return result ? result[1].trim() : '';
+  };
+
+  structuredQuestion.title = extractContent(markdown, 'Title');
+  structuredQuestion.description = extractContent(markdown, 'Description');
+  structuredQuestion.inputFormat = extractContent(markdown, 'Input Format');
+  structuredQuestion.outputFormat = extractContent(markdown, 'Output Format');
+  structuredQuestion.sampleInput = extractContent(markdown, 'Sample Input 1');
+  structuredQuestion.sampleOutput = extractContent(markdown, 'Sample Output 1');
+  structuredQuestion.explanation = extractContent(markdown, 'Explanation 1');
+  structuredQuestion.edgeCases = extractContent(markdown, 'Edge Cases');
+  structuredQuestion.summary = extractContent(markdown, 'Summary');
+
+  // Special handling for Function Signature to remove code block markers
+  const funcSigMatch = markdown.match(/\*\*Function Signature:\*\*([\s\S]*?)(?=\n+\*\*Edge Cases:\*\*|\n+\*\*Summary:\*\*|\n+---|$)/i);
+  if (funcSigMatch) {
+    let rawFuncSig = funcSigMatch[1].trim();
+    // Remove code block backticks and language name
+    rawFuncSig = rawFuncSig.replace(/```[a-zA-Z]*\n/g, '').replace(/```/g, '').trim();
+    structuredQuestion.functionDesc = rawFuncSig;
+  } else {
+    structuredQuestion.functionDesc = '';
+  }
+
+  // Special handling for Constraints (list format)
+  const constraintsMatch = markdown.match(/\*\*Constraints:\*\*([\s\S]*?)(?=\n+\*\*Sample Input 1:\*\*|\n+\*\*Function Signature:\*\*|\n+---|$)/i);
+  if (constraintsMatch) {
+    structuredQuestion.constraints = constraintsMatch[1]
+      .split('\n')
+      .map(item => item.replace(/^-+\s*/, '').trim()) // Handles '-' or '---' at start of list item
+      .filter(item => item);
+  } else {
+    structuredQuestion.constraints = [];
+  }
+
+  // Special handling for Hints (can be nested or standalone)
+  const hintsRegex = /\*\*Hints?:\*\*([\s\S]*?)(?=\n+\*\*|\n+---|$)/i;
+  const hintsSectionMatch = markdown.match(hintsRegex);
+  
+  if (hintsSectionMatch) {
+    structuredQuestion.hints = hintsSectionMatch[1]
+      .split('\n')
+      .map(item => item.replace(/^-+\s*/, '').trim())
+      .filter(item => item);
+  } else {
+    // Fallback: Try to find hints within the explanation if not a direct section
+    const explanationHintsMatch = structuredQuestion.explanation.match(/Hints?:([\s\S]*)/i);
+    if (explanationHintsMatch) {
+      structuredQuestion.hints = explanationHintsMatch[1]
+        .split('\n')
+        .map(item => item.replace(/^-+\s*/, '').trim())
+        .filter(item => item);
+    } else {
+      structuredQuestion.hints = [];
+    }
+  }
+
+  return structuredQuestion;
+};
+
 export default function Game() {
   const navigate = useNavigate();
   const [slideIndex, setSlideIndex] = useState(0);
@@ -16,6 +105,7 @@ export default function Game() {
   const [showTransition, setShowTransition] = useState(false);
   const [lastSubmission, setLastSubmission] = useState(null);
   const [showSubmissionResult, setShowSubmissionResult] = useState(false);
+  const [lobbyCode, setLobbyCode] = useState(null);
   const containerRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const fullText = "New era of Competition..........";
@@ -30,76 +120,13 @@ export default function Game() {
   const [errorMessage, setErrorMessage] = useState("");
   const [showError, setShowError] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [hiddenTests, setHiddenTests] = useState("");
+  const [evaluationResult, setEvaluationResult] = useState(null);
+  const [showLeaderboard, setShowLeaderboard] = useState(true);
+  const [isLoadingQuestion, setIsLoadingQuestion] = useState(true); // Add this state
+  const [isSubmittingCode, setIsSubmittingCode] = useState(false);   // Add this state
+  const [showEvaluationResultComponent, setShowEvaluationResultComponent] = useState(false); // Add this line
   
-  const levelQuestions = {
-    1: {
-      title: "Color Battle: RGB Mixer",
-      description: "Create a function that mixes two RGB colors. Each color is represented as an array of 3 integers [R, G, B] where each value ranges from 0 to 255. The mixing rules are:\n- If both colors have a value > 0 for a channel, take the average\n- If one color has 0 for a channel, use the non-zero value\n- If both colors have 0 for a channel, the result is 0",
-      functionDesc: "Complete the function `mixColors` which takes the following parameters:\n- `color1`: First RGB color array [R, G, B]\n- `color2`: Second RGB color array [R, G, B]",
-      constraints: [
-        "0 ≤ R, G, B ≤ 255",
-        "All numbers must be integers",
-        "Both input arrays will always contain exactly 3 values"
-      ],
-      inputFormat: "Two lines, each containing three space-separated integers representing RGB values.",
-      outputFormat: "Three space-separated integers representing the mixed color's RGB values, where each value is rounded down to the nearest integer.",
-      sampleInput: "255 0 0\n0 255 255",
-      sampleOutput: "255 255 255",
-      explanation: "Let's mix red (255,0,0) with cyan (0,255,255):\nRed channel: one color has 0, use 255\nGreen channel: one color has 0, use 255\nBlue channel: one color has 0, use 255\nResult is white (255,255,255)",
-      hints: [
-        "Handle each color channel separately",
-        "Use integer division for averaging",
-        "Consider edge cases where values are 0"
-      ]
-    },
-    2: {
-      title: "Music Battle: Playlist Shuffler",
-      description: "Design a playlist shuffler that rearranges songs with specific rules:\n- No song can appear in its original position\n- No two songs from the same artist can be played consecutively\n- The last song cannot be from the same artist as the first song",
-      functionDesc: "Complete the function `shufflePlaylist` which takes:\n- `songs`: Array of song objects, each with {title, artist}\n- `originalOrder`: Array of indices showing current order",
-      constraints: [
-        "3 ≤ playlist length ≤ 100",
-        "Artist names are case-sensitive",
-        "All song titles are unique",
-        "Each song has a title and artist property"
-      ],
-      inputFormat: "First line: Integer n (number of songs)\nNext n lines: song_title|artist_name (separated by '|')\nLast line: Original order as space-separated indices (0-based)",
-      outputFormat: "n lines, each containing: position song_title\nwhere position is the new position (0-based) and song_title is the name of the song",
-      sampleInput: "4\nStairway to Heaven|Led Zeppelin\nBohemian Rhapsody|Queen\nHey Jude|Beatles\nWe Will Rock You|Queen",
-      sampleOutput: "2 Stairway to Heaven\n0 Hey Jude\n3 Bohemian Rhapsody\n1 We Will Rock You",
-      explanation: "The shuffle satisfies all rules:\n1. No song is in its original position (0→2, 1→0, 2→3, 3→1)\n2. Queen songs (Bohemian Rhapsody and We Will Rock You) are not consecutive\n3. First song (Hey Jude) and last song (Bohemian Rhapsody) are by different artists\n4. Original order was completely changed",
-      hints: [
-        "Consider using a graph to represent valid song transitions",
-        "Try implementing a backtracking algorithm",
-        "Keep track of artist history while building the playlist"
-      ]
-    },
-    3: {
-      title: "Network Battle: Message Router",
-      description: "You're building a network message router with redundant paths. Each connection between nodes has:\n- A reliability score (0-100%)\n- A latency in milliseconds\n- A bandwidth limit in MB/s\nFind the optimal path that maximizes reliability while keeping latency under a specified limit.",
-      functionDesc: "Complete the function `findOptimalPath` which takes:\n- `network`: Array of connections, each with {from, to, reliability, latency, bandwidth}\n- `start`: Starting node name\n- `end`: Destination node name\n- `maxLatency`: Maximum allowed total latency",
-      constraints: [
-        "2 ≤ number of nodes ≤ 20",
-        "1 ≤ connections ≤ 100",
-        "0 ≤ reliability ≤ 100",
-        "1 ≤ latency ≤ 1000",
-        "1 ≤ bandwidth ≤ 1000"
-      ],
-      inputFormat: "First line: Three space-separated integers - n (nodes), m (connections), maxLatency\nNext m lines: from to reliability latency bandwidth\nLast line: start_node end_node",
-      outputFormat: "First line: Total path reliability (rounded to 2 decimal places)\nSecond line: Total path latency\nThird line: Minimum bandwidth along path\nFourth line: Path as space-separated node names",
-      sampleInput: "4 5 100\nA B 90 20 100\nB C 85 30 200\nA C 70 50 150\nB D 95 40 100\nC D 80 20 300\nA D",
-      sampleOutput: "76.50\n90\n100\nA B D",
-      explanation: "Path Analysis:\n1. Direct path A→C→D:\n   - Reliability: 70% × 80% = 56%\n   - Latency: 50 + 20 = 70ms\n   - Bandwidth: min(150, 300) = 150MB/s\n2. Path A→B→D (chosen):\n   - Reliability: 90% × 85% = 76.50%\n   - Latency: 20 + 40 = 90ms\n   - Bandwidth: min(100, 100) = 100MB/s\n3. A→B→D is optimal because:\n   - Higher reliability than other paths\n   - Latency (90ms) under limit (100ms)\n   - Sufficient bandwidth for transmission",
-      hints: [
-        "Use modified Dijkstra's algorithm with multiple weights",
-        "Consider reliability as multiplicative along the path",
-        "Track minimum bandwidth along each path"
-      ]
-    }
-  };
-
-  const currentQuestion = levelQuestions[currentLevel];
-  const hints = currentQuestion?.hints || [];
-
   useEffect(() => {
     // On component mount, check if we have player data
     const storedName = localStorage.getItem('playerName');
@@ -125,7 +152,6 @@ export default function Game() {
     socket.on("players", (data) => {
       console.log("Received players update in Game:", data);
       if (Array.isArray(data)) {
-        // Ensure each player has a unique name
         const updatedPlayers = data.map(player => ({
           ...player,
           name: player.name || 'Unknown Player'
@@ -139,6 +165,8 @@ export default function Game() {
     
     socket.on("lobby_info", ({ lobbyCode, players }) => {
       console.log("Game received lobby info:", { lobbyCode, players });
+      setLobbyCode(lobbyCode);
+      console.log("Lobby code set:", lobbyCode);
       if (Array.isArray(players)) {
         // Ensure each player has a unique name
         const updatedPlayers = players.map(player => ({
@@ -168,7 +196,7 @@ export default function Game() {
           setTimeout(() => setShowSubmissionResult(false), 3000);
         }
       } else {
-        console.error("Received invalid leaderboard players data:", players);
+        console.error("Received invalid leaderboard players data:", data);
       }
     });
 
@@ -201,7 +229,21 @@ export default function Game() {
       }
     });
 
+    // Cleanup function
     return () => {
+      // Clear questions for this lobby when component unmounts
+      if (lobbyCode) {
+        fetch('http://localhost:3001/clear-lobby-questions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ lobbyCode }),
+        }).catch(error => {
+          console.error('Error clearing lobby questions:', error);
+        });
+      }
+
       socket.off("connect");
       socket.off("players");
       socket.off("lobby_info");
@@ -211,7 +253,61 @@ export default function Game() {
       socket.off("leaderboard_update");
       socket.off("player_eliminated");
     };
-  }, [navigate]);
+  }, [navigate, lobbyCode]);
+
+  useEffect(() => {
+    const loadQuestion = async () => {
+      try {
+        setIsLoadingQuestion(true); // Start loading
+        if (!lobbyCode) {
+          console.log("Waiting for lobby code...");
+          return;
+        }
+        console.log(`Attempting to load question for level ${currentLevel} and lobby ${lobbyCode}`);
+        const response = await fetch(`http://localhost:3001/generate-question?level=${currentLevel}&lobbyCode=${lobbyCode}`, {
+          method: 'GET',
+          mode: 'cors',
+          headers: {
+            'Accept': 'application/json',
+          }
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+        }
+
+        const rawResponseText = await response.text();
+        console.log("Raw Response Text:", rawResponseText);
+
+        let data;
+        try {
+          data = JSON.parse(rawResponseText);
+        } catch (jsonParseError) {
+          console.error("JSON Parse Error:", jsonParseError);
+          console.error("Problematic text:", rawResponseText);
+          throw new Error(`Failed to parse JSON response: ${jsonParseError.message}`);
+        }
+        
+        const structuredQuestion = parseQuestionMarkdown(data.question, language);
+
+        console.log("Parsed Question:", structuredQuestion);
+        
+        setQuestion(structuredQuestion);
+        setHiddenTests(data.hidden_tests);
+      } catch (error) {
+        console.error("Error loading question:", error);
+        console.error("Error message:", error.message);
+        console.error("Error stack:", error.stack);
+        setErrorMessage("Failed to load question. Please try again.");
+        setShowError(true);
+      } finally {
+        setIsLoadingQuestion(false); // End loading on success or failure
+      }
+    };
+
+    loadQuestion();
+  }, [currentLevel, language, lobbyCode]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -291,48 +387,112 @@ export default function Game() {
   const handleHintClick = () => {
     if (slideIndex === 1) {
       setShowHint(true);
-      setHintIndex((prev) => (prev + 1) % hints.length);
+      setHintIndex((prev) => (prev + 1) % question?.hints.length);
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const code = editorRef.current.getValue().trim();
     
     if (!code) {
       setErrorMessage("Please write some code before submitting!");
       setShowError(true);
-      setTimeout(() => setShowError(false), 3000); // Hide error after 3 seconds
+      setTimeout(() => setShowError(false), 3000);
       return;
     }
 
-    // Reset error state
-    setErrorMessage("");
-    setShowError(false);
-    
-    socket.emit('submit_code', {
-      code,
-      language,
-      level: currentLevel
-    });
+    setIsSubmittingCode(true); // Start submitting
 
-    if (currentLevel === 3) {
-      setShowTransition(true);
-      setTimeout(() => {
-        setShowTransition(false);
-        socket.emit('game_complete');
-        navigate('/completion');
-      }, 2000);
-    } else {
-      setShowTransition(true);
-      setTimeout(() => {
-        setShowTransition(false);
-        setSlideIndex(0);
-        setCurrentLevel(prev => prev + 1);
-        if (editorRef.current) {
-          editorRef.current.setValue('');
+    // Clear any previous error messages before a new submission attempt
+    setShowError(false);
+    setErrorMessage("");
+
+    try {
+      const response = await fetch('http://localhost:3001/evaluate-code', {
+        method: 'POST',
+        mode: 'cors', // Explicitly set CORS mode
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          code,
+          question: question.description,
+          language,
+          hidden_tests: hiddenTests
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+      }
+
+      const data = await response.json();
+      const result = data.result;
+
+      // Parse the evaluation result
+      const summaryMatch = result.match(/Test Cases Passed: (\d+)\/(\d+)/);
+      if (summaryMatch) {
+        const passed = parseInt(summaryMatch[1]);
+        const total = 4; // Fixed total of 4 test cases
+        const percentage = Math.round((passed / total) * 100);
+
+        setEvaluationResult({
+          passed,
+          total,
+          percentage,
+          details: result
+        });
+        setShowEvaluationResultComponent(true); // Show the component on success
+
+        // Automatically hide the evaluation result after 3 seconds
+        setTimeout(() => {
+          setShowEvaluationResultComponent(false);
+        }, 3000);
+
+        // Emit the submission result to the server
+        socket.emit('submit_code', {
+          code,
+          language,
+          level: currentLevel,
+          passed,
+          total,
+          percentage
+        });
+
+        if (currentLevel === 3) {
+          setShowTransition(true);
+          setTimeout(() => {
+            setShowTransition(false);
+            socket.emit('game_complete');
+            navigate('/completion');
+          }, 2000);
+        } else {
+          setShowTransition(true);
+          setTimeout(() => {
+            setShowTransition(false);
+            setSlideIndex(0);
+            setCurrentLevel(prev => prev + 1);
+            if (editorRef.current) {
+              editorRef.current.setValue('');
+            }
+            socket.emit('level_change', { level: currentLevel + 1 });
+          }, 2000);
         }
-        socket.emit('level_change', { level: currentLevel + 1 });
-      }, 2000);
+      } else {
+        // Handle case where summaryMatch is null (e.g., if AI response format changes)
+        setErrorMessage("Failed to parse evaluation result. Please try again.");
+        setShowError(true);
+      }
+    } catch (error) {
+      console.error("Evaluation error:", error);
+      console.error("Error message:", error.message);
+      console.error("Error stack:", error.stack);
+      setErrorMessage("Error evaluating your solution. Please try again.");
+      setShowError(true);
+    } finally {
+      setIsSubmittingCode(false); // End submitting on success or failure
     }
   };
 
@@ -401,58 +561,98 @@ export default function Game() {
     </div>
   );
 
+  // Update the evaluation result display in the UI
+  const evaluationResultComponent = showEvaluationResultComponent && evaluationResult && (
+    <div className="fixed top-20 right-5 z-[1000] animate-fade-in">
+      <div className="cyber-border bg-black/80 backdrop-blur-sm px-6 py-4 rounded-md shadow-[0_0_15px_rgba(255,119,0,0.5)]">
+        <div className="flex justify-between items-center mb-2">
+          <div className="text-[#ff7700] font-semibold">Evaluation Result</div>
+          <button 
+            onClick={() => setShowEvaluationResultComponent(false)}
+            onMouseEnter={handleButtonHover}
+            className="text-[#96fff2] hover:text-[#ff7700] transition-colors p-2 hover:bg-[#96fff2]/10 rounded-full"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="text-[#96fff2] text-sm">
+          <div>Test Cases Passed: {evaluationResult.passed}/{evaluationResult.total}</div>
+          <div>Success Rate: {evaluationResult.percentage}%</div>
+          {evaluationResult.percentage === 100 && (
+            <div className="text-lg font-bold mt-1 text-[#ff7700]">
+              🎉 All tests passed!
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   // Update the leaderboard rendering
   const renderLeaderboard = () => (
-    <div className="w-[30%] h-[78vh] cyber-border bg-black/40 p-6 rounded-lg backdrop-blur-sm">
-      <div className="text-[1.5vw] font-bold text-[#ff7700] mb-4 flex items-center justify-between">
-        <span>Leaderboard</span>
-        <span className="text-[1vw] text-[#96fff2]">Points</span>
-      </div>
-      <ul className="space-y-4 max-h-[calc(78vh-4rem)] overflow-y-auto custom-scrollbar pr-2">
-        {players && players.length > 0 ? (
-          [...players]
-            .sort((a, b) => (b.points || 0) - (a.points || 0))
-            .map((player, idx) => (
-              <li 
-                key={player.id}
-                className={`bg-black/60 p-4 rounded-md border-2 flex items-center
-                  ${idx === 0 ? 'border-[#ff7700] shadow-[0_0_15px_rgba(255,119,0,0.3)]' : 'border-[#96fff2]'}
-                  ${player.id === socket.id ? 'bg-[#ff7700]/10' : ''}
-                  ${player.eliminated ? 'opacity-50' : ''}`}
-              >
-                <div className="flex-1 flex items-center space-x-4">
-                  <span className={`text-2xl font-bold ${idx === 0 ? 'text-[#ff7700]' : 'text-[#96fff2]/50'}`}>
-                    #{idx + 1}
-                  </span>
-                  <div className="flex flex-col">
-                    <div className="flex items-center space-x-2">
-                      <span className={`text-lg ${player.id === socket.id ? 'text-[#ff7700]' : 'text-[#96fff2]'}`}>
-                        {player.name || 'Unknown Player'}
-                      </span>
-                      {player.eliminated && (
-                        <span className="text-xs text-red-500 px-2 py-1 rounded-full border border-red-500">
-                          Eliminated
+    showLeaderboard && (
+      <div className="w-[30%] h-[78vh] cyber-border bg-black/40 p-6 rounded-lg backdrop-blur-sm">
+        <div className="text-[1.5vw] font-bold text-[#ff7700] mb-4 flex items-center justify-between">
+          <span>Leaderboard</span>
+          <span className="text-[1vw] text-[#96fff2]">Points</span>
+          <button 
+            onClick={() => setShowLeaderboard(false)}
+            onMouseEnter={handleButtonHover}
+            className="text-[#96fff2] hover:text-[#ff7700] transition-colors p-2 hover:bg-[#96fff2]/10 rounded-full"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <ul className="space-y-4 max-h-[calc(78vh-4rem)] overflow-y-auto custom-scrollbar pr-2">
+          {players && players.length > 0 ? (
+            [...players]
+              .sort((a, b) => (b.points || 0) - (a.points || 0))
+              .map((player, idx) => (
+                <li 
+                  key={player.id}
+                  className={`bg-black/60 p-4 rounded-md border-2 flex items-center
+                    ${idx === 0 ? 'border-[#ff7700] shadow-[0_0_15px_rgba(255,119,0,0.3)]' : 'border-[#96fff2]'}
+                    ${player.id === socket.id ? 'bg-[#ff7700]/10' : ''}
+                    ${player.eliminated ? 'opacity-50' : ''}`}
+                >
+                  <div className="flex-1 flex items-center space-x-4">
+                    <span className={`text-2xl font-bold ${idx === 0 ? 'text-[#ff7700]' : 'text-[#96fff2]/50'}`}>
+                      #{idx + 1}
+                    </span>
+                    <div className="flex flex-col">
+                      <div className="flex items-center space-x-2">
+                        <span className={`text-lg ${player.id === socket.id ? 'text-[#ff7700]' : 'text-[#96fff2]'}`}>
+                          {player.name || 'Unknown Player'}
                         </span>
+                        {player.eliminated && (
+                          <span className="text-xs text-red-500 px-2 py-1 rounded-full border border-red-500">
+                            Eliminated
+                          </span>
+                        )}
+                      </div>
+                      {player.id === socket.id && (
+                        <span className="text-xs text-[#96fff2]/50">You</span>
                       )}
                     </div>
-                    {player.id === socket.id && (
-                      <span className="text-xs text-[#96fff2]/50">You</span>
-                    )}
                   </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <span className={`font-mono text-xl ${idx === 0 ? 'text-[#ff7700]' : 'text-[#96fff2]'}`}>
-                    {player.points || 0}
-                  </span>
-                  <span className={`text-sm ${idx === 0 ? 'text-[#ff7700]/70' : 'text-[#96fff2]/70'}`}>pts</span>
-                </div>
-              </li>
-            ))
-        ) : (
-          <li className="text-center text-[#96fff2] py-4">No players yet</li>
-        )}
-      </ul>
-    </div>
+                  <div className="flex items-center space-x-2">
+                    <span className={`font-mono text-xl ${idx === 0 ? 'text-[#ff7700]' : 'text-[#96fff2]'}`}>
+                      {player.points || 0}
+                    </span>
+                    <span className={`text-sm ${idx === 0 ? 'text-[#ff7700]/70' : 'text-[#96fff2]/70'}`}>pts</span>
+                  </div>
+                </li>
+              ))
+          ) : (
+            <li className="text-center text-[#96fff2] py-4">No players yet</li>
+          )}
+        </ul>
+      </div>
+    )
   );
 
   return (
@@ -644,7 +844,37 @@ export default function Game() {
             text-shadow: 0 0 8px rgba(255, 119, 0, 0.8);
           }
         }
+
+        @keyframes spin { /* Add spin animation for loaders */
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        .loader-spinner {
+          border: 4px solid rgba(255, 119, 0, 0.2); /* Light orange */
+          border-top: 4px solid #ff7700; /* Darker orange */
+          border-radius: 50%;
+          width: 40px;
+          height: 40px;
+          animation: spin 1s linear infinite;
+        }
       `}</style>
+
+      {/* Loader for initial question loading */} 
+      {isLoadingQuestion && (
+        <div className="fixed inset-0 bg-black/90 z-[1100] flex items-center justify-center flex-col space-y-4">
+          <div className="loader-spinner"></div>
+          <div className="text-[#ff7700] text-xl font-mono">Loading Problem Statement...</div>
+        </div>
+      )}
+
+      {/* Loader for code submission */} 
+      {isSubmittingCode && (
+        <div className="fixed inset-0 bg-black/90 z-[1100] flex items-center justify-center flex-col space-y-4">
+          <div className="loader-spinner"></div>
+          <div className="text-[#ff7700] text-xl font-mono">Evaluating Submission...</div>
+        </div>
+      )}
 
       <div ref={containerRef} 
         className="h-screen w-screen bg-gradient-to-r from-[#1d0d00] via-black to-[#1d0d00] text-white font-['Orbitron'] overflow-hidden relative">
@@ -761,7 +991,7 @@ export default function Game() {
             <div className="cyber-border bg-black/40 rounded-lg w-[80%] h-[80vh] flex flex-col backdrop-blur-sm relative">
               {/* Fixed Title */}
               <div className="p-6 border-b border-[#96fff2]/20">
-                <div className="text-[1.8vw] font-bold text-[#96fff2]">{currentQuestion.title}</div>
+                <div className="text-[1.8vw] font-bold text-[#96fff2]">{question?.title || 'Loading...'}</div>
               </div>
               
               {/* Scrollable Content */}
@@ -770,20 +1000,20 @@ export default function Game() {
                   {/* Problem Description */}
                   <div>
                     <h3 className="text-[#ff7700] text-xl font-semibold mb-2">Problem</h3>
-                    <p className="text-gray-200">{currentQuestion.description}</p>
+                    <p className="text-gray-200 whitespace-pre-line">{question?.description}</p>
                   </div>
 
                   {/* Function Description */}
                   <div>
                     <h3 className="text-[#ff7700] text-xl font-semibold mb-2">Function Description</h3>
-                    <p className="text-gray-200 whitespace-pre-line">{currentQuestion.functionDesc}</p>
+                    <p className="text-gray-200 whitespace-pre-line">{question?.functionDesc}</p>
                   </div>
 
                   {/* Constraints */}
                   <div>
                     <h3 className="text-[#ff7700] text-xl font-semibold mb-2">Constraints</h3>
                     <ul className="list-disc list-inside text-gray-200">
-                      {currentQuestion.constraints.map((constraint, index) => (
+                      {question?.constraints?.map((constraint, index) => (
                         <li key={index}>{constraint}</li>
                       ))}
                     </ul>
@@ -792,20 +1022,20 @@ export default function Game() {
                   {/* Input Format */}
                   <div>
                     <h3 className="text-[#ff7700] text-xl font-semibold mb-2">Input Format</h3>
-                    <p className="text-gray-200 whitespace-pre-line">{currentQuestion.inputFormat}</p>
+                    <p className="text-gray-200 whitespace-pre-line">{question?.inputFormat}</p>
                   </div>
 
                   {/* Output Format */}
                   <div>
                     <h3 className="text-[#ff7700] text-xl font-semibold mb-2">Output Format</h3>
-                    <p className="text-gray-200 whitespace-pre-line">{currentQuestion.outputFormat}</p>
+                    <p className="text-gray-200 whitespace-pre-line">{question?.outputFormat}</p>
                   </div>
 
                   {/* Sample Input */}
                   <div>
                     <h3 className="text-[#ff7700] text-xl font-semibold mb-2">Sample Input</h3>
                     <pre className="bg-black/60 p-4 rounded-md text-gray-200 font-mono whitespace-pre-wrap">
-                      {currentQuestion.sampleInput}
+                      {question?.sampleInput}
                     </pre>
                   </div>
 
@@ -813,7 +1043,7 @@ export default function Game() {
                   <div>
                     <h3 className="text-[#ff7700] text-xl font-semibold mb-2">Sample Output</h3>
                     <pre className="bg-black/60 p-4 rounded-md text-gray-200 font-mono whitespace-pre-wrap">
-                      {currentQuestion.sampleOutput}
+                      {question?.sampleOutput}
                     </pre>
                   </div>
 
@@ -821,7 +1051,7 @@ export default function Game() {
                   <div>
                     <h3 className="text-[#ff7700] text-xl font-semibold mb-2">Explanation</h3>
                     <p className="text-gray-200 whitespace-pre-wrap">
-                      {currentQuestion.explanation}
+                      {question?.explanation}
                     </p>
                   </div>
                 </div>
@@ -865,7 +1095,7 @@ export default function Game() {
                   
                   {isDropdownOpen && (
                     <div className="absolute w-full mt-2 bg-black border-2 border-[#ff7700] rounded-md overflow-hidden z-50">
-                      {['JAVA', 'PYTHON', 'JAVASCRIPT', 'C', 'C++'].map((lang) => (
+                      {['JAVA', 'PYTHON', 'C'].map((lang) => (
                         <div
                           key={lang}
                           onClick={() => {
@@ -967,6 +1197,19 @@ export default function Game() {
                   </svg>
                   <span>Submit</span>
                 </button>
+
+                {!showLeaderboard && slideIndex === 1 && (
+                  <button 
+                    onClick={() => setShowLeaderboard(true)}
+                    onMouseEnter={handleButtonHover}
+                    className="px-6 py-3 bg-black/40 text-[#96fff2] border-2 border-[#96fff2] rounded-md hover:bg-[#96fff2]/10 transition-all duration-300 flex items-center space-x-2"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                    </svg>
+                    <span>Show Leaderboard</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -997,7 +1240,7 @@ export default function Game() {
             >
               <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center space-x-3">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-[#ff7700]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                   </svg>
                   <span className="text-[#ff7700] font-bold text-xl">Hint #{hintIndex + 1}</span>
@@ -1015,13 +1258,13 @@ export default function Game() {
                   </svg>
                 </button>
               </div>
-              <p className="text-[#96fff2] text-lg leading-relaxed">{hints[hintIndex]}</p>
+              <p className="text-[#96fff2] text-lg leading-relaxed">{question?.hints[hintIndex]}</p>
               <div className="mt-6 flex justify-between items-center">
                 <span className="text-[#96fff2]/60 text-sm">Click anywhere outside to close</span>
                 <button 
                   onClick={() => {
                     handleButtonClick();
-                    setHintIndex((prev) => (prev + 1) % hints.length);
+                    setHintIndex((prev) => (prev + 1) % question?.hints.length);
                   }}
                   className="px-4 py-2 bg-black/40 text-[#ff7700] border-2 border-[#ff7700] rounded-md hover:bg-[#ff7700]/10 transition-all duration-300"
                 >
@@ -1034,6 +1277,7 @@ export default function Game() {
         {transitionOverlay}
         {errorMessageComponent}
         {submissionResultComponent}
+        {evaluationResultComponent}
       </div>
     </>
   );

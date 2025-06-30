@@ -5,11 +5,12 @@ const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
 const { nanoid } = require("nanoid");
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
 app.use(cors({
-  origin: "http://localhost:5173", // Vite's default port
-  methods: ["GET", "POST"],
+  origin: "*", // Allow all origins for testing
+  methods: ["GET", "POST", "OPTIONS"], // Allow all common methods
   credentials: true
 }));
 
@@ -32,8 +33,8 @@ app.use('/api/auth', authRoutes);
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173", // Vite's default port
-    methods: ["GET", "POST"],
+    origin: "*", // Allow all origins for testing
+    methods: ["GET", "POST", "OPTIONS"], // Allow all common methods
     credentials: true
   }
 });
@@ -122,6 +123,191 @@ setInterval(() => {
     }
   });
 }, 3000); // Update every 3 seconds
+
+// Initialize Gemini
+const genAI = new GoogleGenerativeAI('AIzaSyCbNnmY8DKQbqra0F6S7hba7rGNpoc1E3M');
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+
+// Topics categorized by difficulty
+const levelTopics = {
+  1: ['arrays', 'strings', 'recursion', 'basic math'],
+  2: ['linked list', 'stack', 'queue', 'hash map'],
+  3: ['graph', 'tree', 'binary tree', 'DFS', 'BFS']
+};
+
+// Generate prompt for Gemini
+function generatePrompt(level) {
+  const topic = levelTopics[level][Math.floor(Math.random() * levelTopics[level].length)];
+  const difficulty = { 1: "Easy", 2: "Medium", 3: "Hard" }[level];
+  return `
+You are a top-tier competitive programming problem setter.
+
+Generate ONE high-quality coding problem for an online judge like LeetCode.
+
+- Difficulty: ${difficulty}
+- Topic: ${topic}
+
+The problem must include:
+
+---
+
+Title: A short, descriptive title
+
+Description:
+A detailed problem statement including:
+- What the function should do
+- Definitions and behavior of inputs
+- Edge cases
+- Real-world scenario if possible
+
+Input Format:
+- Number of inputs
+- Type/structure (e.g., list of integers, string, tree)
+- Preconditions/constraints
+
+Output Format:
+- What to return (e.g., integer, string)
+- Edge behavior
+
+Constraints:
+- 3–6 constraints with appropriate ranges
+
+Sample Input 1:
+Example input
+
+Sample Output 1:
+Correct output for above input
+
+Explanation 1:
+Step-by-step explanation of output
+
+Function Signature:
+Python-style function signature, e.g., for a method within a class like LeetCode:
+
+\`\`\`python
+class Solution:
+  def solve(self, ...):
+    # Your code here
+    pass
+\`\`\`
+
+Edge Cases:
+Mention 2–3 edge cases
+
+Summary:
+Short summary of the task
+
+---
+
+**Hidden Test Cases (for internal validation only)**
+
+Provide exactly 4 hidden test cases. Do NOT provide more or less than 4.
+
+Test Case 1:
+Input: ...
+Expected Output: ...
+
+Test Case 2:
+Input: ...
+Expected Output: ...
+
+(Only plain text, no explanation.)
+`;
+}
+
+// Add this near the top with other global variables
+const lobbyQuestions = new Map(); // Map to store questions for each lobby and level
+
+// Modify the generate-question endpoint
+app.get('/generate-question', async (req, res) => {
+  try {
+    const level = parseInt(req.query.level) || 1;
+    const lobbyCode = req.query.lobbyCode;
+
+    if (!lobbyCode) {
+      return res.status(400).json({ error: 'Lobby code is required' });
+    }
+
+    // Check if we already have a question for this lobby and level
+    const questionKey = `${lobbyCode}-${level}`;
+    if (lobbyQuestions.has(questionKey)) {
+      return res.json(lobbyQuestions.get(questionKey));
+    }
+
+    // Generate new question if none exists
+    const prompt = generatePrompt(level);
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+
+    // Parse the response to separate question and hidden tests
+    const hiddenTestsMatch = text.match(/\*\*Hidden Test Cases.*?\*\*([\s\S]*?)(?=\n\n|$)/);
+    const hiddenTests = hiddenTestsMatch ? hiddenTestsMatch[1].trim() : '';
+    const question = text.replace(/\*\*Hidden Test Cases.*?\*\*[\s\S]*$/, '').trim();
+
+    const questionData = { question, hidden_tests: hiddenTests };
+    
+    // Store the question for this lobby and level
+    lobbyQuestions.set(questionKey, questionData);
+
+    res.json(questionData);
+  } catch (error) {
+    console.error('Error generating question:', error);
+    res.status(500).json({ error: 'Failed to generate question' });
+  }
+});
+
+// Add a new endpoint to clear questions when a lobby ends
+app.post('/clear-lobby-questions', (req, res) => {
+  const { lobbyCode } = req.body;
+  if (!lobbyCode) {
+    return res.status(400).json({ error: 'Lobby code is required' });
+  }
+
+  // Remove all questions for this lobby
+  for (const key of lobbyQuestions.keys()) {
+    if (key.startsWith(`${lobbyCode}-`)) {
+      lobbyQuestions.delete(key);
+    }
+  }
+
+  res.json({ success: true });
+});
+
+app.post('/evaluate-code', async (req, res) => {
+  try {
+    const { code, question, language, hidden_tests } = req.body;
+    const prompt = `
+You are a code evaluator.
+
+Below is a coding problem followed by a solution written in ${language}.
+
+Evaluate the code by running it against each hidden test case.
+
+Return your output in this format:
+- "Test Cases Passed: X/Y"
+- List each test case result (Pass/Fail)
+- If failed, mention expected vs actual output briefly
+- End with a short evaluation summary (logic, correctness, etc.)
+
+---
+
+Problem:
+${question}
+
+User Code:
+\`\`\`${language.toLowerCase()}
+${code}
+\`\`\`
+`;
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    res.json({ result: response.text() });
+  } catch (error) {
+    console.error('Error evaluating code:', error);
+    res.status(500).json({ error: 'Failed to evaluate code' });
+  }
+});
 
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
@@ -418,15 +604,26 @@ io.on("connection", (socket) => {
   });
   
   // Handle code submissions
-  socket.on("submit_code", ({ code, language, level }) => {
+  socket.on("submit_code", ({ code, language, level, passed, total }) => {
     if (!playerLobby || !lobbies[playerLobby]) return;
 
     const lobby = lobbies[playerLobby];
     const player = lobby.players.find(p => p.id === socket.id);
     if (!player) return;
 
-    // Calculate points - now just base points without time bonus
-    const points = POINTS_PER_LEVEL[level] || 0;
+    let points = 0;
+    if (passed > 0) {
+      points = passed * 10; // Base points: 10 per passed test case
+      
+      // Special handling for 4/4 test cases based on level
+      if (passed === 4 && total === 4) {
+        if (level === 1) {
+          points = 40; // Level 1 specific points for 4/4
+        } else if (level === 2 || level === 3) {
+          points = 30; // Level 2 & 3 specific points for 4/4
+        }
+      }
+    }
 
     // Update player's points in all relevant places
     player.points += points;
